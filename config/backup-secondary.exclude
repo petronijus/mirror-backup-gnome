@@ -1,0 +1,40 @@
+# backup-secondary: E:\ (SECONDARY) → Z:\BACKUP\SECONDARY\
+# Ported from BvckUp2 backup-0001
+
+# User-defined folder excludes
+!GAMES
+$RECYCLE.BIN
+.fseventsd
+BACKUP
+msdownld.tmp
+music
+Recovery
+WindowsApps
+WpSystem
+WTablet
+WUDownloadCache
+
+# System folders
+System Volume Information
+Recycler
+
+# Temp & cache
+*.tmp
+~*.tmp
+hiberfil.sys
+pagefile.sys
+swapfile.sys
+found.???
+.tickle
+$dcsys$
+.bzvol
+Temporary Internet Files
+CryptNetUrlCache
+IconCacheToDelete
+
+# Browser caches
+Mozilla/Firefox/Profiles/*/Cache*
+Google/Chrome/User Data/*/Cache
+Microsoft/Edge/User Data/*/**Cache*
+Microsoft/Internet Explorer/Recovery
+Microsoft/Windows/INetCache

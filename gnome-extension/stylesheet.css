@@ -1,0 +1,93 @@
+/* Backup Monitor extension styles */
+
+.backup-monitor-icon {
+    icon-size: 16px;
+}
+
+.backup-job-header {
+    font-weight: bold;
+    font-size: 1em;
+}
+
+.backup-job-status {
+    font-size: 0.9em;
+    color: #aaa;
+}
+
+.backup-job-detail {
+    font-size: 0.85em;
+    color: #888;
+    padding-left: 24px;
+}
+
+.backup-progress-bar {
+    height: 4px;
+    border-radius: 2px;
+    background-color: rgba(255, 255, 255, 0.15);
+    margin: 4px 0;
+}
+
+.backup-progress-fill {
+    height: 4px;
+    border-radius: 2px;
+    background-color: #3584e4;
+    transition-duration: 500ms;
+}
+
+.backup-progress-fill-paused {
+    background-color: #e5a50a;
+}
+
+.backup-progress-fill-error {
+    background-color: #e01b24;
+}
+
+.backup-btn {
+    margin: 0 2px;
+    padding: 4px 12px;
+    border-radius: 4px;
+}
+
+.backup-btn-start {
+    background-color: rgba(53, 132, 228, 0.3);
+}
+
+.backup-btn-start:hover {
+    background-color: rgba(53, 132, 228, 0.5);
+}
+
+.backup-btn-stop {
+    background-color: rgba(224, 27, 36, 0.3);
+}
+
+.backup-btn-stop:hover {
+    background-color: rgba(224, 27, 36, 0.5);
+}
+
+.backup-btn-pause {
+    background-color: rgba(229, 165, 10, 0.3);
+}
+
+.backup-btn-pause:hover {
+    background-color: rgba(229, 165, 10, 0.5);
+}
+
+.backup-schedule-item {
+    font-size: 0.85em;
+}
+
+.backup-state-idle {
+    color: #aaa;
+}
+
+.backup-state-running {
+    color: #3584e4;
+}
+
+.backup-state-paused {
+    color: #e5a50a;
+}
+
+.backup-state-error {
+    color: #e01b24;
+}

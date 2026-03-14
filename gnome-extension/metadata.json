@@ -1,0 +1,8 @@
+{
+  "uuid": "backup-monitor@petronijus",
+  "name": "Backup Monitor",
+  "description": "Monitor and control rsync backup jobs managed by systemd timers",
+  "shell-version": ["49"],
+  "version": 1,
+  "url": ""
+}

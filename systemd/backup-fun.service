@@ -1,0 +1,17 @@
+[Unit]
+Description=Backup FUN → DATA-SLOW
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/backup-sync backup-fun /mnt/FUN/ /mnt/DATA-SLOW/BACKUP/FUN/ %h/.config/backup-sync/backup-fun.exclude 0
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=30
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=default.target

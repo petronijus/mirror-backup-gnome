@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup SECONDARY every 2 days
+
+[Timer]
+OnCalendar=*-*-1/2 11:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
