@@ -212,33 +212,46 @@ class BackupJobSection {
         // detail rows
         this._detailBox.visible = isActive;
         if (isActive && status) {
-            // current file / scanning indicator
             if (state === 'scanning') {
                 this._fileLabel.text = 'Building file list\u2026';
                 this._fileLabel.visible = true;
-            } else if (status.current_file) {
-                this._fileLabel.text = status.current_file;
-                this._fileLabel.visible = true;
-            } else {
-                this._fileLabel.visible = false;
-            }
 
-            // stats: percentage · speed · ETA
-            const parts = [];
-            if (status.progress > 0) parts.push(`${status.progress}%`);
-            if (status.speed) parts.push(status.speed);
-            if (status.eta && status.eta !== '0:00:00')
-                parts.push(`ETA ${status.eta}`);
-            this._statsLabel.text = parts.join('  \u00b7  ');
-            this._statsLabel.visible = parts.length > 0;
-
-            // file counts
-            if (status.files_total > 0) {
-                this._filesLabel.text =
-                    `${status.files_transferred}\u2009/\u2009${status.files_total} files`;
-                this._filesLabel.visible = true;
-            } else {
+                const sp = [];
+                if (status.scan_read)
+                    sp.push(`${status.scan_read} read`);
+                if (status.started) {
+                    const elapsed = this._formatElapsed(status.started);
+                    if (elapsed) sp.push(elapsed);
+                }
+                this._statsLabel.text = sp.join('  \u00b7  ');
+                this._statsLabel.visible = sp.length > 0;
                 this._filesLabel.visible = false;
+            } else {
+                // current file
+                if (status.current_file) {
+                    this._fileLabel.text = status.current_file;
+                    this._fileLabel.visible = true;
+                } else {
+                    this._fileLabel.visible = false;
+                }
+
+                // stats: percentage · speed · ETA
+                const parts = [];
+                if (status.progress > 0) parts.push(`${status.progress}%`);
+                if (status.speed) parts.push(status.speed);
+                if (status.eta && status.eta !== '0:00:00')
+                    parts.push(`ETA ${status.eta}`);
+                this._statsLabel.text = parts.join('  \u00b7  ');
+                this._statsLabel.visible = parts.length > 0;
+
+                // file counts
+                if (status.files_total > 0) {
+                    this._filesLabel.text =
+                        `${status.files_transferred}\u2009/\u2009${status.files_total} files`;
+                    this._filesLabel.visible = true;
+                } else {
+                    this._filesLabel.visible = false;
+                }
             }
         }
 
@@ -256,6 +269,23 @@ class BackupJobSection {
         this._stopBtn.visible = isActive;
         this._pauseBtn.child.icon_name = state === 'paused'
             ? 'media-playback-start-symbolic' : 'media-playback-pause-symbolic';
+    }
+
+    _formatElapsed(isoStarted) {
+        try {
+            const startMs = new Date(isoStarted).getTime();
+            if (isNaN(startMs)) return '';
+            const sec = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+            if (sec < 1) return '';
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            const s = sec % 60;
+            if (h > 0)
+                return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            return `${m}:${String(s).padStart(2, '0')}`;
+        } catch (_e) {
+            return '';
+        }
     }
 
     // ── actions ──

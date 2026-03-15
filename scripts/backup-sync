@@ -28,10 +28,12 @@ FILES_XFRD=0
 FILES_TOTAL=0
 FILES_REMAINING=0
 ERROR_MSG=""
+SCAN_READ=""
 FINISHED=0
 IS_PAUSED=0
 SEEN_PROGRESS=0
 START_TIME="$(date -Iseconds)"
+START_EPOCH="$(date +%s)"
 
 # --- helpers ---
 
@@ -42,6 +44,23 @@ json_escape() {
     s="${s//$'\n'/\\n}"
     s="${s//$'\t'/\\t}"
     printf '%s' "$s"
+}
+
+format_bytes() {
+    local bytes=$1
+    if (( bytes >= 1073741824 )); then
+        local whole=$((bytes / 1073741824))
+        local frac=$(( (bytes % 1073741824) * 10 / 1073741824 ))
+        printf '%d.%d GB' "$whole" "$frac"
+    elif (( bytes >= 1048576 )); then
+        local whole=$((bytes / 1048576))
+        local frac=$(( (bytes % 1048576) * 10 / 1048576 ))
+        printf '%d.%d MB' "$whole" "$frac"
+    elif (( bytes >= 1024 )); then
+        printf '%d KB' $((bytes / 1024))
+    else
+        printf '%d B' "$bytes"
+    fi
 }
 
 write_status() {
@@ -64,6 +83,7 @@ write_status() {
   "rsync_pid": ${RSYNC_PID:-0},
   "started": "$START_TIME",
   "updated": "$(date -Iseconds)",
+  "scan_read": "${SCAN_READ:-}",
   "src": "$SRC",
   "dst": "$DST",
   "error": "$escaped_error"
@@ -218,6 +238,9 @@ while kill -0 "$RSYNC_PID" 2>/dev/null; do
             SEEN_PROGRESS=1
             write_status "running"
         elif [[ "$SEEN_PROGRESS" -eq 0 ]]; then
+            if [[ -r "/proc/$RSYNC_PID/io" ]]; then
+                SCAN_READ=$(format_bytes "$(awk '/^read_bytes:/ {print $2}' "/proc/$RSYNC_PID/io" 2>/dev/null || echo 0)")
+            fi
             write_status "scanning"
         fi
         truncate_progress_file
