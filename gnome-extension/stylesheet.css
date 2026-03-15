@@ -1,93 +1,114 @@
-/* Backup Monitor extension styles */
+/* Backup Monitor — native GNOME Shell styling */
 
-.backup-monitor-icon {
-    icon-size: 16px;
+.bm-job {
+    spacing: 6px;
 }
 
-.backup-job-header {
-    font-weight: bold;
-    font-size: 1em;
+/* ── header row ── */
+
+.bm-header {
+    spacing: 8px;
 }
 
-.backup-job-status {
-    font-size: 0.9em;
-    color: #aaa;
+.bm-dot {
+    margin-top: 3px;
 }
 
-.backup-job-detail {
-    font-size: 0.85em;
-    color: #888;
-    padding-left: 24px;
+.bm-dot-idle {
+    color: rgba(255, 255, 255, 0.25);
 }
 
-.backup-progress-bar {
-    height: 4px;
-    border-radius: 2px;
-    background-color: rgba(255, 255, 255, 0.15);
-    margin: 4px 0;
-}
-
-.backup-progress-fill {
-    height: 4px;
-    border-radius: 2px;
-    background-color: #3584e4;
-    transition-duration: 500ms;
-}
-
-.backup-progress-fill-paused {
-    background-color: #e5a50a;
-}
-
-.backup-progress-fill-error {
-    background-color: #e01b24;
-}
-
-.backup-btn {
-    margin: 0 2px;
-    padding: 4px 12px;
-    border-radius: 4px;
-}
-
-.backup-btn-start {
-    background-color: rgba(53, 132, 228, 0.3);
-}
-
-.backup-btn-start:hover {
-    background-color: rgba(53, 132, 228, 0.5);
-}
-
-.backup-btn-stop {
-    background-color: rgba(224, 27, 36, 0.3);
-}
-
-.backup-btn-stop:hover {
-    background-color: rgba(224, 27, 36, 0.5);
-}
-
-.backup-btn-pause {
-    background-color: rgba(229, 165, 10, 0.3);
-}
-
-.backup-btn-pause:hover {
-    background-color: rgba(229, 165, 10, 0.5);
-}
-
-.backup-schedule-item {
-    font-size: 0.85em;
-}
-
-.backup-state-idle {
-    color: #aaa;
-}
-
-.backup-state-running {
+.bm-dot-scanning,
+.bm-dot-running {
     color: #3584e4;
 }
 
-.backup-state-paused {
+.bm-dot-paused {
     color: #e5a50a;
 }
 
-.backup-state-error {
+.bm-dot-error {
+    color: #e01b24;
+}
+
+.bm-name {
+    font-weight: bold;
+}
+
+.bm-state {
+    font-size: 0.92em;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+/* ── progress bar ── */
+
+.bm-progress-track {
+    height: 4px;
+    border-radius: 2px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.bm-progress-fill {
+    height: 4px;
+    border-radius: 2px;
+    background-color: #3584e4;
+    transition-duration: 400ms;
+}
+
+.bm-progress-paused {
+    background-color: #e5a50a;
+}
+
+/* ── detail text ── */
+
+.bm-details {
+    spacing: 2px;
+}
+
+.bm-detail {
+    font-size: 0.85em;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+.bm-file {
+    color: rgba(255, 255, 255, 0.65);
+}
+
+/* ── error ── */
+
+.bm-error {
+    font-size: 0.85em;
+    color: #e01b24;
+    padding: 2px 0;
+}
+
+/* ── action buttons ── */
+
+.bm-buttons {
+    spacing: 6px;
+    padding-top: 2px;
+}
+
+.bm-icon-btn {
+    padding: 6px 10px;
+    border-radius: 99px;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.bm-icon-btn:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+.bm-icon-btn:active {
+    background-color: rgba(255, 255, 255, 0.20);
+}
+
+/* ── panel icon ── */
+
+.bm-icon-active {
+    color: #3584e4;
+}
+
+.bm-icon-error {
     color: #e01b24;
 }

@@ -17,31 +17,56 @@ mkdir -p "$STATUS_DIR" "$LOG_DIR"
 STATUS_FILE="$STATUS_DIR/$JOB_NAME.json"
 PID_FILE="$STATUS_DIR/$JOB_NAME.pid"
 LOG_FILE="$LOG_DIR/$JOB_NAME.log"
+PROGRESS_FILE="$STATUS_DIR/$JOB_NAME.progress"
 
 RSYNC_PID=""
 LAST_PCT=0
 LAST_SPEED=""
 LAST_ETA=""
+CURRENT_FILE=""
+FILES_XFRD=0
+FILES_TOTAL=0
+FILES_REMAINING=0
+ERROR_MSG=""
 FINISHED=0
+IS_PAUSED=0
+SEEN_PROGRESS=0
 START_TIME="$(date -Iseconds)"
 
 # --- helpers ---
 
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
 write_status() {
-    local state="$1" pct="${2:-$LAST_PCT}" speed="${3:-$LAST_SPEED}" eta="${4:-$LAST_ETA}"
+    local state="$1"
+    local escaped_file escaped_error
+    escaped_file=$(json_escape "${CURRENT_FILE:-}")
+    escaped_error=$(json_escape "${ERROR_MSG:-}")
     cat > "$STATUS_FILE" <<-JEOF
 {
   "job": "$JOB_NAME",
   "state": "$state",
-  "progress": $pct,
-  "speed": "$speed",
-  "eta": "$eta",
+  "progress": ${LAST_PCT:-0},
+  "speed": "${LAST_SPEED:-}",
+  "eta": "${LAST_ETA:-}",
+  "current_file": "$escaped_file",
+  "files_transferred": ${FILES_XFRD:-0},
+  "files_total": ${FILES_TOTAL:-0},
+  "files_remaining": ${FILES_REMAINING:-0},
   "pid": $$,
   "rsync_pid": ${RSYNC_PID:-0},
   "started": "$START_TIME",
   "updated": "$(date -Iseconds)",
   "src": "$SRC",
-  "dst": "$DST"
+  "dst": "$DST",
+  "error": "$escaped_error"
 }
 JEOF
 }
@@ -55,11 +80,56 @@ notify() {
         >/dev/null 2>&1 || true
 }
 
+parse_progress() {
+    [[ -f "$PROGRESS_FILE" ]] || return 1
+
+    local recent last_progress last_file
+    recent=$(tail -50 "$PROGRESS_FILE" 2>/dev/null) || return 1
+    [[ -z "$recent" ]] && return 1
+
+    last_progress=$(echo "$recent" | grep -E '[0-9]+%.*B/s' | tail -1) || true
+    last_file=$(echo "$recent" | grep -vE '^[[:space:]]*$|[0-9]+%|^sending |^receiving |^total |^sent |^created |^building ' | tail -1) || true
+
+    if [[ -n "$last_progress" ]]; then
+        if [[ "$last_progress" =~ ([0-9]+)%[[:space:]]+([^[:space:]]+/s)[[:space:]]+([0-9:]+) ]]; then
+            LAST_PCT="${BASH_REMATCH[1]}"
+            LAST_SPEED="${BASH_REMATCH[2]}"
+            LAST_ETA="${BASH_REMATCH[3]}"
+        fi
+
+        if [[ "$last_progress" =~ xfr#([0-9]+),[[:space:]]*(to-chk|ir-chk)=([0-9]+)/([0-9]+) ]]; then
+            FILES_XFRD="${BASH_REMATCH[1]}"
+            FILES_REMAINING="${BASH_REMATCH[3]}"
+            FILES_TOTAL="${BASH_REMATCH[4]}"
+        fi
+
+        [[ -n "$last_file" ]] && CURRENT_FILE="$last_file"
+        return 0
+    fi
+
+    if [[ -n "$last_file" ]]; then
+        CURRENT_FILE="$last_file"
+        return 0
+    fi
+
+    return 1
+}
+
+truncate_progress_file() {
+    local fsize
+    fsize=$(stat -c%s "$PROGRESS_FILE" 2>/dev/null) || return 0
+    if (( fsize > 1048576 )); then
+        tail -100 "$PROGRESS_FILE" > "${PROGRESS_FILE}.tmp" 2>/dev/null
+        mv -f "${PROGRESS_FILE}.tmp" "$PROGRESS_FILE" 2>/dev/null || true
+    fi
+}
+
 # --- signal handlers ---
 
 pause_handler() {
     if [[ -n "$RSYNC_PID" ]] && kill -0 "$RSYNC_PID" 2>/dev/null; then
         kill -STOP "$RSYNC_PID" 2>/dev/null || true
+        IS_PAUSED=1
         write_status "paused"
         notify "⏸ $JOB_NAME" "Backup paused"
     fi
@@ -68,16 +138,18 @@ pause_handler() {
 resume_handler() {
     if [[ -n "$RSYNC_PID" ]] && kill -0 "$RSYNC_PID" 2>/dev/null; then
         kill -CONT "$RSYNC_PID" 2>/dev/null || true
+        IS_PAUSED=0
         write_status "running"
         notify "▶ $JOB_NAME" "Backup resumed"
     fi
 }
 
 cleanup() {
-    rm -f "$PID_FILE"
+    rm -f "$PID_FILE" "$PROGRESS_FILE" "${PROGRESS_FILE}.tmp"
     if [[ "$FINISHED" -eq 0 ]]; then
+        ERROR_MSG="Backup interrupted"
         write_status "error"
-        notify "✖ $JOB_NAME" "Backup failed or interrupted"
+        notify "⏹ $JOB_NAME" "Backup interrupted"
     fi
 }
 
@@ -88,8 +160,9 @@ trap cleanup EXIT
 # --- preflight checks ---
 
 if [[ ! -d "$SRC" ]]; then
+    ERROR_MSG="Source not found: $SRC"
     write_status "error"
-    notify "✖ $JOB_NAME" "Source not found: $SRC"
+    notify "✖ $JOB_NAME" "$ERROR_MSG"
     FINISHED=1
     exit 1
 fi
@@ -103,7 +176,7 @@ fi
 RSYNC_ARGS=(
     -a
     --delete
-    --info=progress2
+    --info=progress2,name1
     --no-inc-recursive
     --human-readable
     --outbuf=L
@@ -127,66 +200,34 @@ fi
 # --- go ---
 
 echo "$$ " > "$PID_FILE"
-write_status "running" 0
+write_status "scanning"
 notify "🔄 $JOB_NAME" "$SRC → $DST"
 
 echo "=== $(date -Iseconds) === $JOB_NAME: $SRC → $DST ===" >> "$LOG_FILE"
 
-# Run rsync in background so we can capture its PID
-rsync "${RSYNC_ARGS[@]}" "$SRC" "$DST" 2>> "$LOG_FILE" &
+rm -f "$PROGRESS_FILE"
+rsync "${RSYNC_ARGS[@]}" "$SRC" "$DST" \
+    > >(stdbuf -oL tr '\r' '\n' > "$PROGRESS_FILE") \
+    2>> "$LOG_FILE" &
 RSYNC_PID=$!
 echo "$$ $RSYNC_PID" > "$PID_FILE"
-write_status "running" 0
 
-# Monitor /proc/RSYNC_PID/io for progress (bytes written vs source size)
-# Fall back to waiting if /proc isn't available
-if [[ -r "/proc/$RSYNC_PID/io" ]]; then
-    # Get source size for progress estimation
-    SRC_BYTES=$(du -sb "$SRC" 2>/dev/null | cut -f1 || echo 0)
-
-    while kill -0 "$RSYNC_PID" 2>/dev/null; do
-        if [[ -r "/proc/$RSYNC_PID/io" ]]; then
-            WRITTEN=$(awk '/^write_bytes:/ {print $2}' "/proc/$RSYNC_PID/io" 2>/dev/null || echo 0)
-            if [[ "$SRC_BYTES" -gt 0 && "$WRITTEN" -gt 0 ]]; then
-                PCT=$(( WRITTEN * 100 / SRC_BYTES ))
-                [[ "$PCT" -gt 100 ]] && PCT=100
-                LAST_PCT=$PCT
-
-                # Calculate speed (bytes since last check)
-                if [[ -n "${PREV_WRITTEN:-}" && -n "${PREV_TIME:-}" ]]; then
-                    NOW=$(date +%s%N)
-                    ELAPSED_NS=$(( NOW - PREV_TIME ))
-                    if [[ "$ELAPSED_NS" -gt 0 ]]; then
-                        BPS=$(( (WRITTEN - PREV_WRITTEN) * 1000000000 / ELAPSED_NS ))
-                        if (( BPS > 1073741824 )); then
-                            LAST_SPEED="$(echo "scale=1; $BPS/1073741824" | bc)GB/s"
-                        elif (( BPS > 1048576 )); then
-                            LAST_SPEED="$(echo "scale=1; $BPS/1048576" | bc)MB/s"
-                        elif (( BPS > 1024 )); then
-                            LAST_SPEED="$(echo "scale=1; $BPS/1024" | bc)KB/s"
-                        else
-                            LAST_SPEED="${BPS}B/s"
-                        fi
-
-                        # ETA
-                        REMAINING=$(( SRC_BYTES - WRITTEN ))
-                        if [[ "$BPS" -gt 0 ]]; then
-                            ETA_SECS=$(( REMAINING / BPS ))
-                            LAST_ETA="$(printf '%d:%02d:%02d' $((ETA_SECS/3600)) $(((ETA_SECS%3600)/60)) $((ETA_SECS%60)))"
-                        fi
-                    fi
-                fi
-                PREV_WRITTEN=$WRITTEN
-                PREV_TIME=$(date +%s%N)
-
-                write_status "running" "$LAST_PCT" "$LAST_SPEED" "$LAST_ETA"
-            fi
+while kill -0 "$RSYNC_PID" 2>/dev/null; do
+    if [[ "$IS_PAUSED" -eq 0 ]]; then
+        if parse_progress; then
+            SEEN_PROGRESS=1
+            write_status "running"
+        elif [[ "$SEEN_PROGRESS" -eq 0 ]]; then
+            write_status "scanning"
         fi
-        sleep 2
-    done
-else
-    wait "$RSYNC_PID" || true
-fi
+        truncate_progress_file
+    fi
+    sleep 2 || true
+done
+
+# Read any remaining output after rsync exits
+sleep 0.5
+parse_progress || true
 
 wait "$RSYNC_PID" 2>/dev/null
 RSYNC_EXIT=$?
@@ -195,7 +236,6 @@ RSYNC_EXIT=$?
 
 if [[ "$ARCHIVE_DAYS" -gt 0 && -d "$DST/.archive" ]]; then
     find "$DST/.archive" -maxdepth 1 -type d -mtime "+$ARCHIVE_DAYS" -exec rm -rf {} + 2>/dev/null || true
-    # Remove .archive dir if empty
     rmdir "$DST/.archive" 2>/dev/null || true
 fi
 
@@ -203,12 +243,17 @@ fi
 
 FINISHED=1
 if [[ "$RSYNC_EXIT" -eq 0 ]]; then
-    write_status "idle" 100
+    LAST_PCT=100
+    CURRENT_FILE=""
+    ERROR_MSG=""
+    write_status "idle"
     notify "✔ $JOB_NAME" "Backup completed"
 else
-    write_status "error" "$LAST_PCT"
+    ERROR_MSG=$(tail -5 "$LOG_FILE" 2>/dev/null | grep -v '^===' | head -3 | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//') || true
+    write_status "error"
     notify "✖ $JOB_NAME" "Backup failed (exit $RSYNC_EXIT)"
 fi
 
+rm -f "$PROGRESS_FILE"
 echo "=== $(date -Iseconds) === finished (exit $RSYNC_EXIT) ===" >> "$LOG_FILE"
 exit "$RSYNC_EXIT"

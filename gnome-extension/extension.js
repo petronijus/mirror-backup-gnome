@@ -9,36 +9,15 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const JOBS = [
-    {id: 'backup-secondary', label: 'SECONDARY', service: 'backup-secondary.service', timer: 'backup-secondary.timer'},
-    {id: 'backup-fun',       label: 'FUN',       service: 'backup-fun.service',       timer: 'backup-fun.timer'},
-    {id: 'backup-music',     label: 'Music',     service: 'backup-music.service',     timer: 'backup-music.timer'},
-    {id: 'backup-photos',    label: 'Photos',    service: 'backup-photos.service',    timer: 'backup-photos.timer'},
+    {id: 'backup-secondary', label: 'Secondary', service: 'backup-secondary.service'},
+    {id: 'backup-fun',       label: 'Fun',       service: 'backup-fun.service'},
+    {id: 'backup-music',     label: 'Music',     service: 'backup-music.service'},
+    {id: 'backup-photos',    label: 'Photos',    service: 'backup-photos.service'},
 ];
 
-const SCHEDULE_PRESETS = [
-    {label: 'Every 6 hours',  calendar: '0/6:00:00'},
-    {label: 'Every 12 hours', calendar: '0/12:00:00'},
-    {label: 'Daily',          calendar: 'daily'},
-    {label: 'Every 2 days',   calendar: '*-*-1/2 11:00:00'},
-    {label: 'Every 4 days',   calendar: '*-*-1/4 22:00:00'},
-    {label: 'Weekly',         calendar: 'weekly'},
-];
-
-const STATUS_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'share', 'backup-sync', 'status']);
-
-function _runSystemctl(args) {
-    try {
-        const proc = Gio.Subprocess.new(
-            ['systemctl', '--user', ...args],
-            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
-        );
-        const [, stdout] = proc.communicate_utf8(null, null);
-        return stdout?.trim() ?? '';
-    } catch (e) {
-        log(`[BackupMonitor] systemctl error: ${e.message}`);
-        return '';
-    }
-}
+const STATUS_DIR = GLib.build_filenamev([
+    GLib.get_home_dir(), '.local', 'share', 'backup-sync', 'status',
+]);
 
 function _runSystemctlAsync(args, callback) {
     try {
@@ -55,7 +34,7 @@ function _runSystemctlAsync(args, callback) {
             }
         });
     } catch (e) {
-        log(`[BackupMonitor] systemctl async error: ${e.message}`);
+        log(`[BackupMonitor] systemctl error: ${e.message}`);
         if (callback) callback('', e);
     }
 }
@@ -64,97 +43,134 @@ function _readStatusFile(jobId) {
     const path = GLib.build_filenamev([STATUS_DIR, `${jobId}.json`]);
     try {
         const [ok, contents] = GLib.file_get_contents(path);
-        if (ok) {
+        if (ok)
             return JSON.parse(new TextDecoder().decode(contents));
-        }
     } catch (_e) {
-        // File doesn't exist or invalid JSON — normal for first run
+        // Missing or invalid — normal for first run
     }
     return null;
 }
 
 class BackupJobSection {
-    constructor(ext, job, menu) {
-        this._ext = ext;
+    constructor(job, menu) {
         this._job = job;
         this._paused = false;
         this._status = null;
 
-        // --- Header item: icon + name + state ---
-        this._headerItem = new PopupMenu.PopupBaseMenuItem({reactive: false});
-        this._headerBox = new St.BoxLayout({vertical: false, x_expand: true, style_class: 'backup-job-header'});
-
-        this._stateIcon = new St.Icon({
-            icon_name: 'media-record-symbolic',
-            icon_size: 12,
-            style: 'color: #aaa; margin-right: 8px; margin-top: 2px;',
+        this._item = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
         });
-        this._headerBox.add_child(this._stateIcon);
+        this._box = new St.BoxLayout({
+            vertical: true,
+            x_expand: true,
+            style_class: 'bm-job',
+        });
+        this._item.add_child(this._box);
 
-        this._nameLabel = new St.Label({text: job.label, x_expand: true});
-        this._headerBox.add_child(this._nameLabel);
+        // ── header row: dot · name · state label ──
+        this._headerRow = new St.BoxLayout({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'bm-header',
+        });
 
-        this._stateLabel = new St.Label({text: 'idle', style_class: 'backup-state-idle'});
-        this._headerBox.add_child(this._stateLabel);
+        this._dot = new St.Icon({
+            icon_name: 'media-record-symbolic',
+            icon_size: 10,
+            style_class: 'bm-dot bm-dot-idle',
+        });
+        this._headerRow.add_child(this._dot);
 
-        this._headerItem.add_child(this._headerBox);
-        menu.addMenuItem(this._headerItem);
+        this._nameLabel = new St.Label({
+            text: job.label,
+            x_expand: true,
+            style_class: 'bm-name',
+        });
+        this._headerRow.add_child(this._nameLabel);
 
-        // --- Progress bar ---
-        this._progressItem = new PopupMenu.PopupBaseMenuItem({reactive: false});
-        this._progressBox = new St.BoxLayout({vertical: true, x_expand: true});
+        this._stateLabel = new St.Label({
+            text: 'Idle',
+            style_class: 'bm-state',
+        });
+        this._headerRow.add_child(this._stateLabel);
 
-        this._progressBarOuter = new St.BoxLayout({style_class: 'backup-progress-bar', x_expand: true});
-        this._progressBarFill = new St.Widget({style_class: 'backup-progress-fill', x_expand: false});
-        this._progressBarOuter.add_child(this._progressBarFill);
-        this._progressBox.add_child(this._progressBarOuter);
+        this._box.add_child(this._headerRow);
 
-        this._detailLabel = new St.Label({text: '', style_class: 'backup-job-detail'});
-        this._progressBox.add_child(this._detailLabel);
+        // ── progress bar ──
+        this._progressTrack = new St.BoxLayout({
+            style_class: 'bm-progress-track',
+            x_expand: true,
+        });
+        this._progressFill = new St.Widget({
+            style_class: 'bm-progress-fill',
+        });
+        this._progressTrack.add_child(this._progressFill);
+        this._box.add_child(this._progressTrack);
+        this._progressTrack.visible = false;
 
-        this._progressItem.add_child(this._progressBox);
-        menu.addMenuItem(this._progressItem);
-        this._progressItem.visible = false;
+        // ── detail rows ──
+        this._detailBox = new St.BoxLayout({
+            vertical: true,
+            x_expand: true,
+            style_class: 'bm-details',
+        });
 
-        // --- Schedule info ---
-        this._scheduleItem = new PopupMenu.PopupBaseMenuItem({reactive: false});
-        this._scheduleLabel = new St.Label({text: '', style_class: 'backup-job-detail'});
-        this._scheduleItem.add_child(this._scheduleLabel);
-        menu.addMenuItem(this._scheduleItem);
+        this._fileLabel = new St.Label({
+            text: '',
+            style_class: 'bm-detail bm-file',
+        });
+        this._fileLabel.clutter_text.set_ellipsize(3); // END
+        this._detailBox.add_child(this._fileLabel);
 
-        // --- Buttons ---
-        this._btnItem = new PopupMenu.PopupBaseMenuItem({reactive: false});
-        this._btnBox = new St.BoxLayout({style: 'padding-left: 20px;'});
+        this._statsLabel = new St.Label({
+            text: '',
+            style_class: 'bm-detail',
+        });
+        this._detailBox.add_child(this._statsLabel);
 
-        this._startBtn = this._makeButton('▶ Start', 'backup-btn backup-btn-start', () => this._onStart());
-        this._stopBtn = this._makeButton('⏹ Stop', 'backup-btn backup-btn-stop', () => this._onStop());
-        this._pauseBtn = this._makeButton('⏸ Pause', 'backup-btn backup-btn-pause', () => this._onPause());
+        this._filesLabel = new St.Label({
+            text: '',
+            style_class: 'bm-detail',
+        });
+        this._detailBox.add_child(this._filesLabel);
 
-        this._btnBox.add_child(this._startBtn);
-        this._btnBox.add_child(this._pauseBtn);
-        this._btnBox.add_child(this._stopBtn);
+        this._box.add_child(this._detailBox);
+        this._detailBox.visible = false;
 
-        this._btnItem.add_child(this._btnBox);
-        menu.addMenuItem(this._btnItem);
+        // ── error row ──
+        this._errorLabel = new St.Label({
+            text: '',
+            style_class: 'bm-error',
+        });
+        this._errorLabel.clutter_text.set_line_wrap(true);
+        this._box.add_child(this._errorLabel);
+        this._errorLabel.visible = false;
 
-        // --- Schedule submenu ---
-        this._schedSubMenu = new PopupMenu.PopupSubMenuMenuItem('Schedule');
-        for (const preset of SCHEDULE_PRESETS) {
-            const item = new PopupMenu.PopupMenuItem(preset.label, {style_class: 'backup-schedule-item'});
-            item.connect('activate', () => this._onSetSchedule(preset.calendar));
-            this._schedSubMenu.menu.addMenuItem(item);
-        }
-        menu.addMenuItem(this._schedSubMenu);
+        // ── action buttons ──
+        this._btnRow = new St.BoxLayout({style_class: 'bm-buttons'});
 
-        // --- Separator ---
+        this._startBtn = this._iconButton(
+            'media-playback-start-symbolic', () => this._onStart());
+        this._pauseBtn = this._iconButton(
+            'media-playback-pause-symbolic', () => this._onPause());
+        this._stopBtn = this._iconButton(
+            'media-playback-stop-symbolic', () => this._onStop());
+
+        this._btnRow.add_child(this._startBtn);
+        this._btnRow.add_child(this._pauseBtn);
+        this._btnRow.add_child(this._stopBtn);
+        this._box.add_child(this._btnRow);
+
+        menu.addMenuItem(this._item);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
     }
 
-    _makeButton(label, styleClass, callback) {
+    _iconButton(iconName, callback) {
         const btn = new St.Button({
-            label: label,
-            style_class: styleClass,
+            style_class: 'bm-icon-btn',
             can_focus: true,
+            child: new St.Icon({icon_name: iconName, icon_size: 16}),
         });
         btn.connect('clicked', () => {
             callback();
@@ -168,101 +184,81 @@ class BackupJobSection {
         this._status = status;
         const state = status?.state ?? 'idle';
 
-        // Update state label and icon
-        const stateColors = {idle: '#aaa', running: '#3584e4', paused: '#e5a50a', error: '#e01b24'};
-        const stateNames = {idle: 'idle', running: 'syncing', paused: 'paused', error: 'error'};
-        const color = stateColors[state] ?? '#aaa';
+        // header
+        const names = {
+            idle: 'Idle',
+            scanning: 'Scanning',
+            running: 'Syncing',
+            paused: 'Paused',
+            error: 'Error',
+        };
+        this._stateLabel.text = names[state] ?? state;
+        this._dot.style_class = `bm-dot bm-dot-${state}`;
 
-        this._stateIcon.style = `color: ${color}; margin-right: 8px; margin-top: 2px;`;
-        this._stateLabel.text = stateNames[state] ?? state;
-        this._stateLabel.style_class = `backup-state-${state}`;
+        const isActive =
+            state === 'running' || state === 'paused' || state === 'scanning';
 
-        const isActive = state === 'running' || state === 'paused';
-
-        // Progress bar
-        this._progressItem.visible = isActive;
+        // progress bar
+        this._progressTrack.visible = isActive;
         if (isActive && status) {
             const pct = Math.min(100, Math.max(0, status.progress ?? 0));
-            const totalWidth = this._progressBarOuter.get_width();
-            if (totalWidth > 0) {
-                this._progressBarFill.set_width(Math.round(totalWidth * pct / 100));
-            }
-            this._progressBarFill.style_class = state === 'paused'
-                ? 'backup-progress-fill backup-progress-fill-paused'
-                : 'backup-progress-fill';
+            const tw = this._progressTrack.get_width();
+            if (tw > 0)
+                this._progressFill.set_width(Math.round(tw * pct / 100));
+            this._progressFill.style_class = state === 'paused'
+                ? 'bm-progress-fill bm-progress-paused' : 'bm-progress-fill';
+        }
 
+        // detail rows
+        this._detailBox.visible = isActive;
+        if (isActive && status) {
+            // current file / scanning indicator
+            if (state === 'scanning') {
+                this._fileLabel.text = 'Building file list\u2026';
+                this._fileLabel.visible = true;
+            } else if (status.current_file) {
+                this._fileLabel.text = status.current_file;
+                this._fileLabel.visible = true;
+            } else {
+                this._fileLabel.visible = false;
+            }
+
+            // stats: percentage · speed · ETA
             const parts = [];
-            if (pct > 0) parts.push(`${pct}%`);
+            if (status.progress > 0) parts.push(`${status.progress}%`);
             if (status.speed) parts.push(status.speed);
-            if (status.eta && status.eta !== '0:00:00') parts.push(`ETA ${status.eta}`);
-            this._detailLabel.text = parts.join('  ·  ');
+            if (status.eta && status.eta !== '0:00:00')
+                parts.push(`ETA ${status.eta}`);
+            this._statsLabel.text = parts.join('  \u00b7  ');
+            this._statsLabel.visible = parts.length > 0;
+
+            // file counts
+            if (status.files_total > 0) {
+                this._filesLabel.text =
+                    `${status.files_transferred}\u2009/\u2009${status.files_total} files`;
+                this._filesLabel.visible = true;
+            } else {
+                this._filesLabel.visible = false;
+            }
         }
 
-        // Schedule info
-        if (!isActive) {
-            this._updateScheduleInfo();
+        // error
+        if (state === 'error' && status?.error) {
+            this._errorLabel.text = status.error;
+            this._errorLabel.visible = true;
         } else {
-            this._scheduleLabel.text = '';
-            this._scheduleItem.visible = false;
+            this._errorLabel.visible = false;
         }
 
-        // Button visibility
+        // buttons
         this._startBtn.visible = !isActive;
-        this._pauseBtn.visible = isActive;
+        this._pauseBtn.visible = state === 'running' || state === 'paused';
         this._stopBtn.visible = isActive;
-        this._pauseBtn.label = state === 'paused' ? '▶ Resume' : '⏸ Pause';
-        this._schedSubMenu.visible = !isActive;
+        this._pauseBtn.child.icon_name = state === 'paused'
+            ? 'media-playback-start-symbolic' : 'media-playback-pause-symbolic';
     }
 
-    _updateScheduleInfo() {
-        this._scheduleItem.visible = true;
-        _runSystemctlAsync(['show', this._job.timer, '--property=LastTriggerUSec,NextElapseUSecRealtime'], (out) => {
-            if (!out) {
-                this._scheduleLabel.text = 'Timer not active';
-                return;
-            }
-            const props = {};
-            for (const line of out.split('\n')) {
-                const [k, ...rest] = line.split('=');
-                props[k] = rest.join('=');
-            }
-            const parts = [];
-            if (props.LastTriggerUSec && props.LastTriggerUSec !== 'n/a') {
-                parts.push(`Last: ${this._relativeTime(props.LastTriggerUSec)}`);
-            }
-            if (props.NextElapseUSecRealtime && props.NextElapseUSecRealtime !== 'n/a') {
-                parts.push(`Next: ${this._relativeTime(props.NextElapseUSecRealtime)}`);
-            }
-            this._scheduleLabel.text = parts.join('  ·  ') || 'Timer not scheduled';
-        });
-    }
-
-    _relativeTime(timestampStr) {
-        try {
-            // systemd shows timestamps like "Thu 2026-03-14 11:00:00 CET"
-            // Parse with Date — drop day-of-week prefix if present
-            const cleaned = timestampStr.replace(/^[A-Za-z]+ /, '').replace(/ [A-Z]{3,4}$/, '');
-            const ts = new Date(cleaned).getTime();
-            if (isNaN(ts)) return timestampStr;
-
-            const now = Date.now();
-            const diffMs = ts - now;
-            const absDiff = Math.abs(diffMs);
-            const mins = Math.floor(absDiff / 60000);
-            const hours = Math.floor(absDiff / 3600000);
-            const days = Math.floor(absDiff / 86400000);
-
-            let rel;
-            if (mins < 1) rel = 'now';
-            else if (mins < 60) rel = `${mins}m`;
-            else if (hours < 24) rel = `${hours}h`;
-            else rel = `${days}d`;
-
-            return diffMs < 0 ? `${rel} ago` : `in ${rel}`;
-        } catch (_e) {
-            return timestampStr;
-        }
-    }
+    // ── actions ──
 
     _onStart() {
         _runSystemctlAsync(['start', this._job.service]);
@@ -270,10 +266,8 @@ class BackupJobSection {
     }
 
     _onStop() {
-        // Resume first if paused, so the process can receive SIGTERM
-        if (this._paused) {
+        if (this._paused || this._status?.state === 'paused')
             _runSystemctlAsync(['kill', '--signal=USR2', this._job.service]);
-        }
         _runSystemctlAsync(['stop', this._job.service]);
         this._paused = false;
     }
@@ -288,62 +282,33 @@ class BackupJobSection {
         }
     }
 
-    _onSetSchedule(calendar) {
-        // Create timer override drop-in
-        const overrideDir = GLib.build_filenamev([
-            GLib.get_home_dir(), '.config', 'systemd', 'user',
-            `${this._job.timer}.d`
-        ]);
-        const overrideFile = GLib.build_filenamev([overrideDir, 'override.conf']);
-
-        try {
-            GLib.mkdir_with_parents(overrideDir, 0o755);
-            const content = `[Timer]\nOnCalendar=\nOnCalendar=${calendar}\n`;
-            GLib.file_set_contents(overrideFile, content);
-            _runSystemctlAsync(['daemon-reload'], () => {
-                _runSystemctlAsync(['restart', this._job.timer]);
-            });
-        } catch (e) {
-            log(`[BackupMonitor] Failed to set schedule: ${e.message}`);
-        }
-    }
-
-    destroy() {
-        // Nothing specific to destroy — menu items are owned by the menu
-    }
+    destroy() {}
 }
 
 export default class BackupMonitorExtension extends Extension {
     enable() {
         this._indicator = new PanelMenu.Button(0.0, 'Backup Monitor', false);
 
-        // Panel icon
-        const icon = new St.Icon({
+        this._panelIcon = new St.Icon({
             icon_name: 'drive-harddisk-symbolic',
-            style_class: 'system-status-icon backup-monitor-icon',
+            style_class: 'system-status-icon',
         });
-        this._indicator.add_child(icon);
+        this._indicator.add_child(this._panelIcon);
 
-        // Store reference to icon for color updates
-        this._panelIcon = icon;
-
-        // Build menu
         this._jobSections = [];
         for (const job of JOBS) {
-            const section = new BackupJobSection(this, job, this._indicator.menu);
+            const section = new BackupJobSection(job, this._indicator.menu);
             this._jobSections.push(section);
         }
 
         Main.panel.addToStatusArea('backup-monitor', this._indicator);
 
-        // Start polling status files
-        this._pollId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 3, () => {
-            this._updateAll();
-            return GLib.SOURCE_CONTINUE;
-        });
-
-        // Initial update
-        this._updateAll();
+        this._pollId = GLib.timeout_add_seconds(
+            GLib.PRIORITY_DEFAULT, 3, () => {
+                this._refresh();
+                return GLib.SOURCE_CONTINUE;
+            });
+        this._refresh();
     }
 
     disable() {
@@ -351,35 +316,30 @@ export default class BackupMonitorExtension extends Extension {
             GLib.source_remove(this._pollId);
             this._pollId = null;
         }
-        for (const section of this._jobSections) {
-            section.destroy();
-        }
+        for (const s of this._jobSections) s.destroy();
         this._jobSections = [];
         this._indicator?.destroy();
         this._indicator = null;
     }
 
-    _updateAll() {
-        let anyRunning = false;
+    _refresh() {
+        let anyActive = false;
         let anyError = false;
 
-        for (const section of this._jobSections) {
-            section.update();
-            if (section._status?.state === 'running' || section._status?.state === 'paused') {
-                anyRunning = true;
-            }
-            if (section._status?.state === 'error') {
+        for (const s of this._jobSections) {
+            s.update();
+            const st = s._status?.state;
+            if (st === 'running' || st === 'paused' || st === 'scanning')
+                anyActive = true;
+            if (st === 'error')
                 anyError = true;
-            }
         }
 
-        // Update panel icon color based on overall state
-        if (anyError) {
-            this._panelIcon.style = 'color: #e01b24;';
-        } else if (anyRunning) {
-            this._panelIcon.style = 'color: #3584e4;';
-        } else {
-            this._panelIcon.style = '';
-        }
+        if (anyError)
+            this._panelIcon.style_class = 'system-status-icon bm-icon-error';
+        else if (anyActive)
+            this._panelIcon.style_class = 'system-status-icon bm-icon-active';
+        else
+            this._panelIcon.style_class = 'system-status-icon';
     }
 }
