@@ -39,12 +39,36 @@ function _runSystemctlAsync(args, callback) {
     }
 }
 
+function _isBackupAlive(pid) {
+    if (!pid || pid <= 0) return false;
+    try {
+        const [ok, data] = GLib.file_get_contents(`/proc/${pid}/cmdline`);
+        if (!ok) return false;
+        return new TextDecoder().decode(data).includes('backup-sync');
+    } catch (_e) {
+        return false;
+    }
+}
+
 function _readStatusFile(jobId) {
     const path = GLib.build_filenamev([STATUS_DIR, `${jobId}.json`]);
     try {
         const [ok, contents] = GLib.file_get_contents(path);
-        if (ok)
-            return JSON.parse(new TextDecoder().decode(contents));
+        if (!ok) return null;
+        const status = JSON.parse(new TextDecoder().decode(contents));
+
+        const st = status.state;
+        if ((st === 'running' || st === 'scanning' || st === 'paused')
+            && !_isBackupAlive(status.pid)) {
+            status.state = 'idle';
+            status.progress = 0;
+            status.speed = '';
+            status.eta = '';
+            status.current_file = '';
+            status.error = '';
+        }
+
+        return status;
     } catch (_e) {
         // Missing or invalid — normal for first run
     }
@@ -192,8 +216,10 @@ class BackupJobSection {
             paused: 'Paused',
             error: 'Error',
         };
+        const isSuccess = state === 'idle' && (status?.progress ?? 0) >= 100;
         this._stateLabel.text = names[state] ?? state;
-        this._dot.style_class = `bm-dot bm-dot-${state}`;
+        this._dot.style_class = isSuccess
+            ? 'bm-dot bm-dot-success' : `bm-dot bm-dot-${state}`;
 
         const isActive =
             state === 'running' || state === 'paused' || state === 'scanning';
@@ -229,7 +255,7 @@ class BackupJobSection {
             } else {
                 // current file
                 if (status.current_file) {
-                    this._fileLabel.text = status.current_file;
+                    this._fileLabel.text = this._shortenPath(status.current_file);
                     this._fileLabel.visible = true;
                 } else {
                     this._fileLabel.visible = false;
@@ -265,10 +291,17 @@ class BackupJobSection {
 
         // buttons
         this._startBtn.visible = !isActive;
-        this._pauseBtn.visible = state === 'running' || state === 'paused';
+        this._pauseBtn.visible = isActive;
         this._stopBtn.visible = isActive;
         this._pauseBtn.child.icon_name = state === 'paused'
             ? 'media-playback-start-symbolic' : 'media-playback-pause-symbolic';
+    }
+
+    _shortenPath(p) {
+        if (!p) return '';
+        const parts = p.replace(/\/$/, '').split('/');
+        if (parts.length <= 2) return p;
+        return '\u2026/' + parts.slice(-2).join('/');
     }
 
     _formatElapsed(isoStarted) {
@@ -324,6 +357,9 @@ export default class BackupMonitorExtension extends Extension {
             style_class: 'system-status-icon',
         });
         this._indicator.add_child(this._panelIcon);
+        this._pulsing = false;
+
+        this._indicator.menu.box.add_style_class_name('bm-menu');
 
         this._jobSections = [];
         for (const job of JOBS) {
@@ -332,6 +368,10 @@ export default class BackupMonitorExtension extends Extension {
         }
 
         Main.panel.addToStatusArea('backup-monitor', this._indicator);
+
+        this._indicator.menu.connect('open-state-changed', (_menu, open) => {
+            if (open) this._refresh();
+        });
 
         this._pollId = GLib.timeout_add_seconds(
             GLib.PRIORITY_DEFAULT, 3, () => {
@@ -342,6 +382,7 @@ export default class BackupMonitorExtension extends Extension {
     }
 
     disable() {
+        this._stopPulse();
         if (this._pollId) {
             GLib.source_remove(this._pollId);
             this._pollId = null;
@@ -365,11 +406,47 @@ export default class BackupMonitorExtension extends Extension {
                 anyError = true;
         }
 
-        if (anyError)
+        if (anyError) {
             this._panelIcon.style_class = 'system-status-icon bm-icon-error';
-        else if (anyActive)
+            anyActive ? this._startPulse() : this._stopPulse();
+        } else if (anyActive) {
             this._panelIcon.style_class = 'system-status-icon bm-icon-active';
-        else
+            this._startPulse();
+        } else {
             this._panelIcon.style_class = 'system-status-icon';
+            this._stopPulse();
+        }
+    }
+
+    _startPulse() {
+        if (this._pulsing) return;
+        this._pulsing = true;
+        this._doPulse();
+    }
+
+    _doPulse() {
+        if (!this._pulsing || !this._panelIcon) return;
+        this._panelIcon.ease({
+            opacity: 80,
+            duration: 1000,
+            mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
+            onComplete: () => {
+                if (!this._pulsing || !this._panelIcon) return;
+                this._panelIcon.ease({
+                    opacity: 255,
+                    duration: 1000,
+                    mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
+                    onComplete: () => this._doPulse(),
+                });
+            },
+        });
+    }
+
+    _stopPulse() {
+        this._pulsing = false;
+        if (this._panelIcon) {
+            this._panelIcon.remove_all_transitions();
+            this._panelIcon.opacity = 255;
+        }
     }
 }

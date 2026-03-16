@@ -1,5 +1,10 @@
 /* Backup Monitor — native GNOME Shell styling */
 
+.bm-menu {
+    min-width: 320px;
+    max-width: 320px;
+}
+
 .bm-job {
     spacing: 6px;
 }
@@ -25,6 +30,10 @@
 
 .bm-dot-paused {
     color: #e5a50a;
+}
+
+.bm-dot-success {
+    color: #2ec27e;
 }
 
 .bm-dot-error {
