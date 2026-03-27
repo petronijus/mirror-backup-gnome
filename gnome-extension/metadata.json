@@ -2,7 +2,7 @@
   "uuid": "backup-monitor@petronijus",
   "name": "Backup Monitor",
   "description": "Monitor and control rsync backup jobs managed by systemd timers",
-  "shell-version": ["49"],
+  "shell-version": ["49", "50"],
   "version": 2,
   "url": ""
 }
