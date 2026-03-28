@@ -12,12 +12,14 @@ ARCHIVE_DAYS="${5:-0}"
 
 STATUS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/backup-sync/status"
 LOG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/backup-sync/logs"
-mkdir -p "$STATUS_DIR" "$LOG_DIR"
+HISTORY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/backup-sync/history"
+mkdir -p "$STATUS_DIR" "$LOG_DIR" "$HISTORY_DIR"
 
 STATUS_FILE="$STATUS_DIR/$JOB_NAME.json"
 PID_FILE="$STATUS_DIR/$JOB_NAME.pid"
 LOG_FILE="$LOG_DIR/$JOB_NAME.log"
 PROGRESS_FILE="$STATUS_DIR/$JOB_NAME.progress"
+LOCK_FILE="$STATUS_DIR/backup-sync.lock"
 
 RSYNC_PID=""
 LAST_PCT=0
@@ -191,16 +193,41 @@ if [[ ! -d "$DST" ]]; then
     mkdir -p "$DST"
 fi
 
+# --- job queue: wait for exclusive lock ---
+# Only one backup runs at a time. Others wait in FIFO order.
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9 2>/dev/null; then
+    write_status "queued"
+    notify "⏳ $JOB_NAME" "Waiting for another backup to finish"
+    flock 9  # blocking wait
+fi
+# Lock acquired — reset start time to now (excludes queue wait)
+START_TIME="$(date -Iseconds)"
+START_EPOCH="$(date +%s)"
+
 # --- build rsync args ---
+
+# Delete mode: before (default), during, after, or disabled
+DELETE_MODE="${BACKUP_SYNC_DELETE_MODE:-before}"
+DELETE_ARG=""
+case "$DELETE_MODE" in
+    before)  DELETE_ARG="--delete-before" ;;
+    during)  DELETE_ARG="--delete-during" ;;
+    after)   DELETE_ARG="--delete-after" ;;
+    disabled) DELETE_ARG="" ;;
+    *)       DELETE_ARG="--delete-before" ;;
+esac
 
 RSYNC_ARGS=(
     -a
-    --delete
     --info=progress2,name1
     --no-inc-recursive
     --human-readable
     --outbuf=L
 )
+
+[[ -n "$DELETE_ARG" ]] && RSYNC_ARGS+=("$DELETE_ARG")
 
 if [[ -n "$EXCLUDE_FILE" && -f "$EXCLUDE_FILE" ]]; then
     RSYNC_ARGS+=(--exclude-from="$EXCLUDE_FILE")
@@ -209,6 +236,44 @@ fi
 if [[ "$ARCHIVE_DAYS" -gt 0 ]]; then
     ARCHIVE_DIR="$DST/.archive/$(date +%Y-%m-%d_%H%M%S)"
     RSYNC_ARGS+=(--backup "--backup-dir=$ARCHIVE_DIR")
+fi
+
+# --- optional rsync features (env vars set by systemd service) ---
+
+# Bandwidth limit (KB/s)
+if [[ -n "${BACKUP_SYNC_BWLIMIT:-}" && "${BACKUP_SYNC_BWLIMIT:-0}" -gt 0 ]]; then
+    RSYNC_ARGS+=("--bwlimit=${BACKUP_SYNC_BWLIMIT}")
+fi
+
+# Compression
+[[ "${BACKUP_SYNC_COMPRESS:-0}" == "1" ]] && RSYNC_ARGS+=(--compress)
+
+# Checksum-based comparison instead of time+size
+[[ "${BACKUP_SYNC_CHECKSUM:-0}" == "1" ]] && RSYNC_ARGS+=(--checksum)
+
+# Preserve hard links
+[[ "${BACKUP_SYNC_HARD_LINKS:-0}" == "1" ]] && RSYNC_ARGS+=(--hard-links)
+
+# Preserve extended attributes
+[[ "${BACKUP_SYNC_XATTRS:-0}" == "1" ]] && RSYNC_ARGS+=(--xattrs)
+
+# Preserve ACLs
+[[ "${BACKUP_SYNC_ACLS:-0}" == "1" ]] && RSYNC_ARGS+=(--acls)
+
+# Resume partial transfers
+[[ "${BACKUP_SYNC_PARTIAL:-0}" == "1" ]] && RSYNC_ARGS+=(--partial)
+
+# Skip newer files on destination
+[[ "${BACKUP_SYNC_UPDATE:-0}" == "1" ]] && RSYNC_ARGS+=(--update)
+
+# Max file size
+if [[ -n "${BACKUP_SYNC_MAX_SIZE:-}" ]]; then
+    RSYNC_ARGS+=("--max-size=${BACKUP_SYNC_MAX_SIZE}")
+fi
+
+# Min file size
+if [[ -n "${BACKUP_SYNC_MIN_SIZE:-}" ]]; then
+    RSYNC_ARGS+=("--min-size=${BACKUP_SYNC_MIN_SIZE}")
 fi
 
 # --- rotate log ---
@@ -276,6 +341,18 @@ else
     write_status "error"
     notify "✖ $JOB_NAME" "Backup failed (exit $RSYNC_EXIT)"
 fi
+
+# --- write history entry ---
+
+FINISH_TIME="$(date -Iseconds)"
+FINISH_EPOCH="$(date +%s)"
+DURATION_SEC=$(( FINISH_EPOCH - START_EPOCH ))
+HISTORY_FILE="$HISTORY_DIR/$JOB_NAME.jsonl"
+printf '{"started":"%s","finished":"%s","duration_sec":%d,"exit_code":%d,"files_transferred":%d,"files_total":%d,"error":"%s"}\n' \
+    "$START_TIME" "$FINISH_TIME" "$DURATION_SEC" "$RSYNC_EXIT" \
+    "${FILES_XFRD:-0}" "${FILES_TOTAL:-0}" \
+    "$(json_escape "${ERROR_MSG:-}")" \
+    >> "$HISTORY_FILE"
 
 rm -f "$PROGRESS_FILE"
 echo "=== $(date -Iseconds) === finished (exit $RSYNC_EXIT) ===" >> "$LOG_FILE"

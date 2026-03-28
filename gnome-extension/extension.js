@@ -58,7 +58,7 @@ function _readStatusFile(jobId) {
         const status = JSON.parse(new TextDecoder().decode(contents));
 
         const st = status.state;
-        if ((st === 'running' || st === 'scanning' || st === 'paused')
+        if ((st === 'running' || st === 'scanning' || st === 'paused' || st === 'queued')
             && !_isBackupAlive(status.pid)) {
             status.state = 'idle';
             status.progress = 0;
@@ -211,6 +211,7 @@ class BackupJobSection {
         // header
         const names = {
             idle: 'Idle',
+            queued: 'Queued',
             scanning: 'Scanning',
             running: 'Syncing',
             paused: 'Paused',
@@ -223,6 +224,7 @@ class BackupJobSection {
 
         const isActive =
             state === 'running' || state === 'paused' || state === 'scanning';
+        const isQueued = state === 'queued';
 
         // progress bar
         this._progressTrack.visible = isActive;
@@ -290,9 +292,9 @@ class BackupJobSection {
         }
 
         // buttons
-        this._startBtn.visible = !isActive;
+        this._startBtn.visible = !isActive && !isQueued;
         this._pauseBtn.visible = isActive;
-        this._stopBtn.visible = isActive;
+        this._stopBtn.visible = isActive || isQueued;
         this._pauseBtn.child.icon_name = state === 'paused'
             ? 'media-playback-start-symbolic' : 'media-playback-pause-symbolic';
     }
@@ -400,7 +402,7 @@ export default class BackupMonitorExtension extends Extension {
         for (const s of this._jobSections) {
             s.update();
             const st = s._status?.state;
-            if (st === 'running' || st === 'paused' || st === 'scanning')
+            if (st === 'running' || st === 'paused' || st === 'scanning' || st === 'queued')
                 anyActive = true;
             if (st === 'error')
                 anyError = true;

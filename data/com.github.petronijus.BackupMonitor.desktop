@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Backup Monitor
+Comment=Monitor and manage rsync backups
+Exec=python3 -m backup_monitor.main
+Icon=drive-harddisk-symbolic
+Terminal=false
+Type=Application
+Categories=Utility;System;
+Keywords=backup;rsync;sync;monitor;
+StartupNotify=true

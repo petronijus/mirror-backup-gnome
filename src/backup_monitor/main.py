@@ -1,0 +1,67 @@
+"""Backup Monitor — GTK4/libadwaita desktop app for managing rsync backups."""
+
+from __future__ import annotations
+
+import sys
+import os
+from pathlib import Path
+
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Adw', '1')
+from gi.repository import Gtk, Adw, Gdk, Gio, GLib
+
+from backup_monitor import APP_ID
+from backup_monitor.window import BackupMonitorWindow
+
+
+class BackupMonitorApp(Adw.Application):
+    """Main application class."""
+
+    def __init__(self):
+        super().__init__(
+            application_id=APP_ID,
+            flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
+        )
+
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        self._load_css()
+
+    def do_activate(self):
+        win = self.get_active_window()
+        if win:
+            win.present()
+            return
+
+        win = BackupMonitorWindow(self)
+        win.present()
+
+    def _load_css(self):
+        """Load custom CSS from data/style.css."""
+        css_paths = [
+            # Development: relative to this file
+            Path(__file__).parent.parent.parent / 'data' / 'style.css',
+            # Installed: ~/.local/share/backup-monitor/style.css
+            Path.home() / '.local' / 'share' / 'backup-monitor' / 'style.css',
+        ]
+        for css_path in css_paths:
+            if css_path.is_file():
+                provider = Gtk.CssProvider()
+                provider.load_from_path(str(css_path))
+                display = Gdk.Display.get_default()
+                if display:
+                    Gtk.StyleContext.add_provider_for_display(
+                        display, provider,
+                        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+                    )
+                break
+
+
+def main():
+    app = BackupMonitorApp()
+    return app.run(sys.argv)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

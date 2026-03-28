@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime data (contains machine-specific paths)
+*.log
+*.pid
+
+# IDE
+.vscode/
+.idea/

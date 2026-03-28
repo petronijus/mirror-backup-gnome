@@ -1,0 +1,165 @@
+"""Job detail page — current status, run history, and log access."""
+
+from __future__ import annotations
+
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Adw', '1')
+from gi.repository import Gtk, Adw, GObject
+
+from backup_monitor.models.job import BackupJob
+from backup_monitor.models.job_history import (
+    read_history, compute_stats, HistoryEntry, HistoryStats,
+)
+
+
+class JobDetailPage(Adw.NavigationPage):
+    """Detail page for a single backup job."""
+
+    __gtype_name__ = 'JobDetailPage'
+
+    __gsignals__ = {
+        'view-log': (GObject.SignalFlags.RUN_FIRST, None, (str, str)),  # job_id, job_name
+    }
+
+    def __init__(self, job: BackupJob):
+        super().__init__(title=job.label)
+        self._job = job
+
+        toolbar = Adw.ToolbarView()
+        self.set_child(toolbar)
+
+        header = Adw.HeaderBar()
+        toolbar.add_top_bar(header)
+
+        scroll = Gtk.ScrolledWindow(
+            vexpand=True,
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+        )
+        toolbar.set_content(scroll)
+
+        clamp = Adw.Clamp(
+            maximum_size=700,
+            margin_top=24, margin_bottom=24,
+            margin_start=24, margin_end=24,
+        )
+        scroll.set_child(clamp)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        clamp.set_child(content)
+
+        # ── Job info ──
+        info_group = Adw.PreferencesGroup(title='Job Info')
+        content.append(info_group)
+
+        if self._job.description:
+            info_group.add(self._info_row('Description', self._job.description))
+
+        info_group.add(self._info_row('Source', self._job.source))
+        info_group.add(self._info_row('Destination', self._job.destination))
+
+        if self._job.timer_schedule:
+            info_group.add(self._info_row('Schedule', self._job.timer_schedule))
+        if self._job.archive_days > 0:
+            info_group.add(self._info_row('Archive retention', f'{self._job.archive_days} days'))
+        if self._job.exclude_file:
+            from pathlib import Path
+            info_group.add(self._info_row('Exclude file', Path(self._job.exclude_file).name))
+
+        # ── Current status ──
+        status_group = Adw.PreferencesGroup(title='Current Status')
+        content.append(status_group)
+
+        st = self._job.status
+        state_display = {
+            'idle': 'Idle', 'queued': 'Queued', 'scanning': 'Scanning',
+            'running': 'Syncing', 'paused': 'Paused', 'error': 'Error',
+        }
+        status_group.add(self._info_row('State', state_display.get(st.state, st.state)))
+
+        if self._job.next_run:
+            status_group.add(self._info_row('Next run', self._job.next_run))
+        if self._job.last_run:
+            status_group.add(self._info_row('Last triggered', self._job.last_run))
+
+        if st.state in ('running', 'scanning', 'paused'):
+            if st.progress > 0:
+                status_group.add(self._info_row('Progress', f'{st.progress:.0f}%'))
+            if st.speed:
+                status_group.add(self._info_row('Speed', st.speed))
+            if st.eta and st.eta != '0:00:00':
+                status_group.add(self._info_row('ETA', st.eta))
+            if st.files_total > 0:
+                status_group.add(self._info_row(
+                    'Files', f'{st.files_transferred} / {st.files_total}'))
+
+        if st.state == 'error' and st.error:
+            error_row = self._info_row('Error', st.error)
+            error_row.add_css_class('error')
+            status_group.add(error_row)
+
+        # ── Statistics ──
+        entries = read_history(self._job.id)
+        stats = compute_stats(entries)
+
+        if stats.total_runs > 0:
+            stats_group = Adw.PreferencesGroup(title='Statistics')
+            content.append(stats_group)
+
+            stats_group.add(self._info_row('Total runs', str(stats.total_runs)))
+            stats_group.add(self._info_row(
+                'Success rate', f'{stats.success_rate:.0f}% ({stats.successful_runs}/{stats.total_runs})'))
+            stats_group.add(self._info_row('Avg duration', stats.avg_duration_formatted))
+            stats_group.add(self._info_row('Last success', stats.last_success))
+            if stats.failed_runs > 0:
+                stats_group.add(self._info_row('Last failure', stats.last_failure))
+
+        # ── Run history ──
+        if entries:
+            history_group = Adw.PreferencesGroup(
+                title='Recent Runs',
+                description=f'Last {len(entries)} runs',
+            )
+            content.append(history_group)
+
+            for entry in entries[:20]:  # Show last 20
+                history_group.add(self._history_row(entry))
+
+        # ── Log access ──
+        log_group = Adw.PreferencesGroup(title='Logs')
+        content.append(log_group)
+
+        log_row = Adw.ActionRow(
+            title='View full log',
+            subtitle=f'{self._job.id}.log',
+            activatable=True,
+        )
+        log_row.add_suffix(Gtk.Image(icon_name='go-next-symbolic'))
+        log_row.connect('activated', self._on_view_log)
+        log_group.add(log_row)
+
+    def _info_row(self, title: str, value: str) -> Adw.ActionRow:
+        row = Adw.ActionRow(title=title, subtitle=value)
+        row.set_subtitle_selectable(True)
+        return row
+
+    def _history_row(self, entry: HistoryEntry) -> Adw.ActionRow:
+        icon = 'emblem-ok-symbolic' if entry.success else 'dialog-error-symbolic'
+        status_text = 'OK' if entry.success else f'Failed (exit {entry.exit_code})'
+
+        row = Adw.ActionRow(
+            title=entry.started_relative,
+            subtitle=f'{status_text}  ·  {entry.duration_formatted}  ·  {entry.files_transferred} files',
+        )
+
+        status_icon = Gtk.Image(
+            icon_name=icon,
+            css_classes=['success' if entry.success else 'error'],
+            valign=Gtk.Align.CENTER,
+        )
+        row.add_prefix(status_icon)
+
+        return row
+
+    def _on_view_log(self, row):
+        self.emit('view-log', self._job.id, self._job.label)

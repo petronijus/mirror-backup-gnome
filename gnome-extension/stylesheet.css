@@ -28,6 +28,10 @@
     color: #3584e4;
 }
 
+.bm-dot-queued {
+    color: #9a9996;
+}
+
 .bm-dot-paused {
     color: #e5a50a;
 }

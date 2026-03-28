@@ -4,7 +4,6 @@ Description=Backup FUN daily
 [Timer]
 OnCalendar=daily
 Persistent=true
-RandomizedDelaySec=300
 
 [Install]
 WantedBy=timers.target
