@@ -39,11 +39,12 @@ class BackupMonitorApp(Adw.Application):
 
     def _load_css(self):
         """Load custom CSS from data/style.css."""
+        # __file__ = .../backup_monitor/main.py
+        # In dev:    repo/src/backup_monitor/main.py → repo/data/style.css
+        # Bundled:   ext_dir/app/backup_monitor/main.py → ext_dir/data/style.css
+        # Both resolve via: parent(main.py) / .. / .. / data / style.css
         css_paths = [
-            # Development: relative to this file
             Path(__file__).parent.parent.parent / 'data' / 'style.css',
-            # Installed: ~/.local/share/backup-monitor/style.css
-            Path.home() / '.local' / 'share' / 'backup-monitor' / 'style.css',
         ]
         for css_path in css_paths:
             if css_path.is_file():

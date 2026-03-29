@@ -369,6 +369,25 @@ export default class BackupMonitorExtension extends Extension {
             this._jobSections.push(section);
         }
 
+        // "Open Backup Monitor" button at the bottom
+        const openAppItem = new PopupMenu.PopupMenuItem('Open Backup Monitor');
+        openAppItem.label.add_style_class_name('bm-open-app');
+        const extPath = this.dir.get_path();
+        openAppItem.connect('activate', () => {
+            try {
+                // App is bundled inside the extension directory at app/
+                const appSrc = GLib.build_filenamev([extPath, 'app']);
+                Gio.Subprocess.new(
+                    ['bash', '-c',
+                     `PYTHONPATH="${appSrc}:\${PYTHONPATH:-}" exec python3 -m backup_monitor.main`],
+                    Gio.SubprocessFlags.NONE,
+                );
+            } catch (e) {
+                log(`[BackupMonitor] Failed to launch app: ${e.message}`);
+            }
+        });
+        this._indicator.menu.addMenuItem(openAppItem);
+
         Main.panel.addToStatusArea('backup-monitor', this._indicator);
 
         this._indicator.menu.connect('open-state-changed', (_menu, open) => {
