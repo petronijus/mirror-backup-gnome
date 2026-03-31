@@ -398,6 +398,9 @@ class BackupJobSection {
 
 export default class BackupMonitorExtension extends Extension {
     enable() {
+        // First-run setup: install backup-sync script and create directories
+        this._firstRunSetup();
+
         this._indicator = new PanelMenu.Button(0.0, 'Backup Monitor', false);
 
         this._panelIcon = new St.Icon({
@@ -455,6 +458,59 @@ export default class BackupMonitorExtension extends Extension {
 
         this._refresh();
         this._fetchTimerInfo();
+    }
+
+    _firstRunSetup() {
+        // Install backup-sync script from the bundled copy if not present
+        const extDir = this.dir.get_path();
+        const home = GLib.get_home_dir();
+        const binDir = GLib.build_filenamev([home, '.local', 'bin']);
+        const target = GLib.build_filenamev([binDir, 'backup-sync']);
+        const source = GLib.build_filenamev([extDir, 'scripts', 'backup-sync']);
+
+        // Create directories
+        for (const dir of [
+            binDir,
+            GLib.build_filenamev([home, '.local', 'share', 'backup-sync', 'status']),
+            GLib.build_filenamev([home, '.local', 'share', 'backup-sync', 'logs']),
+            GLib.build_filenamev([home, '.local', 'share', 'backup-sync', 'history']),
+            GLib.build_filenamev([home, '.config', 'backup-sync']),
+        ]) {
+            GLib.mkdir_with_parents(dir, 0o755);
+        }
+
+        // Copy backup-sync if bundled and newer or missing
+        try {
+            const srcFile = Gio.File.new_for_path(source);
+            if (srcFile.query_exists(null)) {
+                const dstFile = Gio.File.new_for_path(target);
+                srcFile.copy(dstFile, Gio.FileCopyFlags.OVERWRITE, null, null);
+                // Make executable
+                try {
+                    Gio.Subprocess.new(
+                        ['chmod', '+x', target],
+                        Gio.SubprocessFlags.NONE,
+                    );
+                } catch (_e) { /* ignore */ }
+            }
+        } catch (_e) {
+            // Already exists or no bundled script — fine
+        }
+
+        // Install .desktop file for the app launcher
+        try {
+            const desktopSource = GLib.build_filenamev([extDir, 'data',
+                'com.github.petronijus.BackupMonitor.desktop']);
+            const desktopDir = GLib.build_filenamev([home, '.local', 'share', 'applications']);
+            const desktopTarget = GLib.build_filenamev([desktopDir,
+                'com.github.petronijus.BackupMonitor.desktop']);
+            GLib.mkdir_with_parents(desktopDir, 0o755);
+            const src = Gio.File.new_for_path(desktopSource);
+            if (src.query_exists(null)) {
+                src.copy(Gio.File.new_for_path(desktopTarget),
+                    Gio.FileCopyFlags.OVERWRITE, null, null);
+            }
+        } catch (_e) { /* ignore */ }
     }
 
     disable() {
