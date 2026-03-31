@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Build artifacts
+build/
+
 # Runtime data (contains machine-specific paths)
 *.log
 *.pid
