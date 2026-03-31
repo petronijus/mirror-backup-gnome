@@ -50,6 +50,35 @@ function _isBackupAlive(pid) {
     }
 }
 
+function _formatCountdown(isoTimestamp) {
+    try {
+        const target = new Date(isoTimestamp).getTime();
+        if (isNaN(target)) return '';
+        const now = Date.now();
+        let sec = Math.floor((target - now) / 1000);
+        if (sec <= 0) return 'now';
+
+        const days = Math.floor(sec / 86400);
+        const hours = Math.floor((sec % 86400) / 3600);
+        const minutes = Math.floor((sec % 3600) / 60);
+
+        if (days > 0) return `in ${days}d ${hours}h`;
+        if (hours > 0) return `in ${hours}h ${minutes}m`;
+        if (minutes > 0) return `in ${minutes}m`;
+        return `in ${sec}s`;
+    } catch (_e) {
+        return '';
+    }
+}
+
+function _parseSystemdTimestamp(ts) {
+    // "Thu 2026-03-27 18:00:00 CET" → ISO string
+    const parts = ts.split(/\s+/);
+    if (parts.length >= 3)
+        return `${parts[1]}T${parts[2]}`;
+    return '';
+}
+
 function _readStatusFile(jobId) {
     const path = GLib.build_filenamev([STATUS_DIR, `${jobId}.json`]);
     try {
@@ -80,6 +109,7 @@ class BackupJobSection {
         this._job = job;
         this._paused = false;
         this._status = null;
+        this._nextRunIso = '';  // ISO timestamp for countdown
 
         this._item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
@@ -170,6 +200,13 @@ class BackupJobSection {
         this._errorLabel.clutter_text.set_line_wrap(true);
         this._box.add_child(this._errorLabel);
         this._errorLabel.visible = false;
+
+        // ── countdown row ──
+        this._countdownLabel = new St.Label({
+            text: '',
+            style_class: 'bm-detail bm-countdown',
+        });
+        this._box.add_child(this._countdownLabel);
 
         // ── action buttons ──
         this._btnRow = new St.BoxLayout({style_class: 'bm-buttons'});
@@ -291,6 +328,15 @@ class BackupJobSection {
             this._errorLabel.visible = false;
         }
 
+        // countdown
+        if (!isActive && !isQueued && this._nextRunIso) {
+            const cd = _formatCountdown(this._nextRunIso);
+            this._countdownLabel.text = cd ? `Next ${cd}` : '';
+            this._countdownLabel.visible = !!cd;
+        } else {
+            this._countdownLabel.visible = false;
+        }
+
         // buttons
         this._startBtn.visible = !isActive && !isQueued;
         this._pauseBtn.visible = isActive;
@@ -399,7 +445,16 @@ export default class BackupMonitorExtension extends Extension {
                 this._refresh();
                 return GLib.SOURCE_CONTINUE;
             });
+
+        // Fetch timer info every 30 seconds
+        this._timerPollId = GLib.timeout_add_seconds(
+            GLib.PRIORITY_DEFAULT, 30, () => {
+                this._fetchTimerInfo();
+                return GLib.SOURCE_CONTINUE;
+            });
+
         this._refresh();
+        this._fetchTimerInfo();
     }
 
     disable() {
@@ -408,10 +463,35 @@ export default class BackupMonitorExtension extends Extension {
             GLib.source_remove(this._pollId);
             this._pollId = null;
         }
+        if (this._timerPollId) {
+            GLib.source_remove(this._timerPollId);
+            this._timerPollId = null;
+        }
         for (const s of this._jobSections) s.destroy();
         this._jobSections = [];
         this._indicator?.destroy();
         this._indicator = null;
+    }
+
+    _fetchTimerInfo() {
+        // Fetch NextElapseUSecRealtime for each job's timer
+        for (const section of this._jobSections) {
+            const timerName = section._job.id + '.timer';
+            _runSystemctlAsync(
+                ['show', timerName,
+                 '--property=NextElapseUSecRealtime'],
+                (stdout, err) => {
+                    if (err || !stdout) return;
+                    for (const line of stdout.split('\n')) {
+                        if (line.startsWith('NextElapseUSecRealtime=')) {
+                            const val = line.split('=')[1]?.trim();
+                            if (val && val !== 'n/a')
+                                section._nextRunIso = _parseSystemdTimestamp(val);
+                        }
+                    }
+                },
+            );
+        }
     }
 
     _refresh() {

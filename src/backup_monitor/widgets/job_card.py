@@ -9,6 +9,7 @@ from gi.repository import Gtk, Adw, GLib, GObject
 
 from backup_monitor.models.job import BackupJob
 from backup_monitor.services import systemd_service
+from backup_monitor.services.systemd_service import format_countdown, format_relative_past
 
 
 class JobCard(Gtk.Box):
@@ -273,11 +274,11 @@ class JobCard(Gtk.Box):
                     parts.append(f'{st.files_transferred}/{st.files_total} files')
                 self._stats_label.set_label('  \u00b7  '.join(parts))
 
-        # Schedule info
-        next_text = f'Next: {self._job.next_run}' if self._job.next_run else ''
-        last_text = f'Last: {self._job.last_run}' if self._job.last_run else ''
-        self._next_run_label.set_label(next_text)
-        self._last_run_label.set_label(last_text)
+        # Schedule info — live countdown
+        countdown = format_countdown(self._job.next_run)
+        last = format_relative_past(self._job.last_run)
+        self._next_run_label.set_label(f'Next: {countdown}' if countdown else '')
+        self._last_run_label.set_label(f'Last: {last}' if last else '')
 
         # Error
         if state == 'error' and st.error:

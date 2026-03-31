@@ -9,18 +9,9 @@ from gi.repository import Gtk, Adw, GObject
 
 from backup_monitor.services.job_manager import JobManager, create_exclude_file
 
-# Schedule presets for the dropdown
-SCHEDULE_PRESETS = [
-    ('Every 6 hours',    '0/6:00:00'),
-    ('Daily',            'daily'),
-    ('Every 2 days',     '*-*-1/2 11:00:00'),
-    ('Every 4 days',     '*-*-1/4 22:00:00'),
-    ('Weekly (Monday)',   'Mon *-*-* 00:00:00'),
-    ('Weekly (Sunday)',   'Sun *-*-* 00:00:00'),
-    ('Monthly',          'monthly'),
-    ('Custom',           ''),
-    ('Manual only',      '__manual__'),
-]
+FREQ_MODES = ['Weekly', 'Monthly', 'Custom', 'Manual only']
+WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+WEEKDAY_SYSTEMD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 
 class JobEditorPage(Adw.NavigationPage):
@@ -123,24 +114,104 @@ class JobEditorPage(Adw.NavigationPage):
         schedule_group = Adw.PreferencesGroup(title='Schedule')
         form.append(schedule_group)
 
-        # Schedule preset dropdown
-        preset_strings = Gtk.StringList()
-        for label, _ in SCHEDULE_PRESETS:
-            preset_strings.append(label)
-
-        self._schedule_dropdown = Adw.ComboRow(
+        # Frequency mode dropdown
+        freq_strings = Gtk.StringList()
+        for label in FREQ_MODES:
+            freq_strings.append(label)
+        self._freq_dropdown = Adw.ComboRow(
             title='Frequency',
-            model=preset_strings,
+            model=freq_strings,
         )
-        self._schedule_dropdown.connect('notify::selected', self._on_schedule_changed)
-        schedule_group.add(self._schedule_dropdown)
+        self._freq_dropdown.connect('notify::selected', self._on_freq_changed)
+        schedule_group.add(self._freq_dropdown)
 
-        # Custom expression entry (shown when "Custom" is selected)
+        # Interval: "Every N weeks/months"
+        self._interval_row = Adw.SpinRow.new_with_range(1, 99, 1)
+        self._interval_row.set_title('Repeat every')
+        self._interval_row.set_value(1)
+        self._interval_row.connect('notify::value', self._on_schedule_detail_changed)
+        schedule_group.add(self._interval_row)
+
+        # Weekday pills (Weekly mode) — row of toggle buttons
+        self._weekday_row = Adw.ActionRow(title='On days')
+        weekday_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
+        self._weekday_buttons = []
+        for label in WEEKDAY_LABELS:
+            btn = Gtk.ToggleButton(
+                label=label,
+                css_classes=['pill', 'bm-weekday-btn'],
+            )
+            btn.connect('toggled', self._on_schedule_detail_changed)
+            weekday_box.append(btn)
+            self._weekday_buttons.append(btn)
+        self._weekday_row.add_suffix(weekday_box)
+        schedule_group.add(self._weekday_row)
+
+        # Day of month (Monthly mode)
+        self._month_day_row = Adw.SpinRow.new_with_range(1, 31, 1)
+        self._month_day_row.set_title('On day of month')
+        self._month_day_row.set_value(1)
+        self._month_day_row.set_visible(False)
+        self._month_day_row.connect('notify::value', self._on_schedule_detail_changed)
+        schedule_group.add(self._month_day_row)
+
+        # Time picker: [−] HH : MM [+] with 30-min steps
+        time_row = Adw.ActionRow(title='At time')
+        time_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+
+        minus_btn = Gtk.Button(
+            icon_name='list-remove-symbolic',
+            css_classes=['flat', 'circular'],
+            tooltip_text='−30 minutes',
+        )
+        minus_btn.connect('clicked', self._on_time_minus)
+        time_box.append(minus_btn)
+
+        self._hour_entry = Gtk.Entry(
+            text='00', max_length=2, width_chars=2,
+            xalign=0.5, input_purpose=Gtk.InputPurpose.DIGITS,
+            css_classes=['bm-time-entry'],
+        )
+        self._hour_entry.connect('changed', self._on_time_entry_changed)
+        time_box.append(self._hour_entry)
+
+        time_box.append(Gtk.Label(label=':', css_classes=['title-3']))
+
+        self._minute_entry = Gtk.Entry(
+            text='00', max_length=2, width_chars=2,
+            xalign=0.5, input_purpose=Gtk.InputPurpose.DIGITS,
+            css_classes=['bm-time-entry'],
+        )
+        self._minute_entry.connect('changed', self._on_time_entry_changed)
+        time_box.append(self._minute_entry)
+
+        plus_btn = Gtk.Button(
+            icon_name='list-add-symbolic',
+            css_classes=['flat', 'circular'],
+            tooltip_text='+30 minutes',
+        )
+        plus_btn.connect('clicked', self._on_time_plus)
+        time_box.append(plus_btn)
+
+        time_row.add_suffix(time_box)
+        schedule_group.add(time_row)
+
+        # Custom expression (Custom mode only)
         self._custom_expr_row = Adw.EntryRow(
-            title='Calendar expression',
+            title='Systemd calendar expression',
             visible=False,
         )
         schedule_group.add(self._custom_expr_row)
+
+        # Schedule summary
+        self._schedule_summary = Adw.ActionRow(
+            title='Schedule summary',
+            css_classes=['dim-label'],
+        )
+        schedule_group.add(self._schedule_summary)
+
+        # Initial visibility
+        self._on_freq_changed(self._freq_dropdown, None)
 
         # ── Advanced ──
         advanced_group = Adw.PreferencesGroup(title='Advanced')
@@ -252,27 +323,11 @@ class JobEditorPage(Adw.NavigationPage):
         schedule = job.get('schedule', {})
         sched_type = schedule.get('type', 'calendar')
         expression = schedule.get('expression', 'daily')
-        # Find matching preset
+
         if sched_type == 'manual':
-            # Select "Manual only"
-            for i, (_, expr) in enumerate(SCHEDULE_PRESETS):
-                if expr == '__manual__':
-                    self._schedule_dropdown.set_selected(i)
-                    break
+            self._freq_dropdown.set_selected(FREQ_MODES.index('Manual only'))
         else:
-            matched = False
-            for i, (_, expr) in enumerate(SCHEDULE_PRESETS):
-                if expr == expression:
-                    self._schedule_dropdown.set_selected(i)
-                    matched = True
-                    break
-            if not matched:
-                # Set to "Custom" and fill expression
-                for i, (label, _) in enumerate(SCHEDULE_PRESETS):
-                    if label == 'Custom':
-                        self._schedule_dropdown.set_selected(i)
-                        break
-                self._custom_expr_row.set_text(expression)
+            self._populate_schedule_from_expression(expression)
 
         # Exclude file info
         exclude = job.get('exclude_file', '')
@@ -295,11 +350,198 @@ class JobEditorPage(Adw.NavigationPage):
         self._max_size_row.set_text(rsync_opts.get('max_size', ''))
         self._min_size_row.set_text(rsync_opts.get('min_size', ''))
 
-    def _on_schedule_changed(self, combo, pspec):
+    def _on_freq_changed(self, combo, pspec):
         idx = combo.get_selected()
-        if 0 <= idx < len(SCHEDULE_PRESETS):
-            label, expr = SCHEDULE_PRESETS[idx]
-            self._custom_expr_row.set_visible(label == 'Custom')
+        mode = FREQ_MODES[idx] if 0 <= idx < len(FREQ_MODES) else 'Weekly'
+
+        self._interval_row.set_visible(mode in ('Weekly', 'Monthly'))
+        self._weekday_row.set_visible(mode == 'Weekly')
+        self._month_day_row.set_visible(mode == 'Monthly')
+        self._custom_expr_row.set_visible(mode == 'Custom')
+
+        suffixes = {'Weekly': 'week(s)', 'Monthly': 'month(s)'}
+        if mode in suffixes:
+            self._interval_row.set_title(f'Repeat every ... {suffixes[mode]}')
+
+        self._update_schedule_summary()
+
+    def _on_schedule_detail_changed(self, *args):
+        self._update_schedule_summary()
+
+    def _get_time(self) -> tuple[int, int]:
+        try:
+            h = max(0, min(23, int(self._hour_entry.get_text() or '0')))
+        except ValueError:
+            h = 0
+        try:
+            m = max(0, min(59, int(self._minute_entry.get_text() or '0')))
+        except ValueError:
+            m = 0
+        return h, m
+
+    def _set_time(self, h: int, m: int):
+        self._hour_entry.set_text(f'{h:02d}')
+        self._minute_entry.set_text(f'{m:02d}')
+
+    def _on_time_entry_changed(self, entry):
+        self._on_schedule_detail_changed()
+
+    def _on_time_plus(self, btn):
+        h, m = self._get_time()
+        total = h * 60 + m + 30
+        self._set_time((total // 60) % 24, total % 60)
+
+    def _on_time_minus(self, btn):
+        h, m = self._get_time()
+        total = h * 60 + m - 30
+        if total < 0:
+            total += 24 * 60
+        self._set_time((total // 60) % 24, total % 60)
+
+    def _update_schedule_summary(self):
+        """Build and display a human-readable schedule summary."""
+        idx = self._freq_dropdown.get_selected()
+        mode = FREQ_MODES[idx] if 0 <= idx < len(FREQ_MODES) else 'Weekly'
+
+        if mode == 'Manual only':
+            self._schedule_summary.set_subtitle('Manual only — no automatic scheduling')
+            return
+        if mode == 'Custom':
+            self._schedule_summary.set_subtitle(self._custom_expr_row.get_text() or '(enter expression)')
+            return
+
+        interval = int(self._interval_row.get_value())
+        hour, minute = self._get_time()
+        time_str = f'{hour:02d}:{minute:02d}'
+
+        if mode == 'Weekly':
+            days = [WEEKDAY_LABELS[i] for i, btn in enumerate(self._weekday_buttons) if btn.get_active()]
+            if len(days) == 7:
+                days_str = 'every day'
+            elif len(days) == 5 and all(WEEKDAY_LABELS[i] in days for i in range(5)):
+                days_str = 'weekdays'
+            elif len(days) == 2 and all(WEEKDAY_LABELS[i] in days for i in (5, 6)):
+                days_str = 'weekends'
+            else:
+                days_str = ', '.join(days) if days else 'no days selected'
+            if interval == 1:
+                text = f'Every week on {days_str} at {time_str}'
+            else:
+                text = f'Every {interval} weeks on {days_str} at {time_str}'
+            # Special case: all 7 days, interval 1 = daily
+            if len(days) == 7 and interval == 1:
+                text = f'Every day at {time_str}'
+        elif mode == 'Monthly':
+            day = int(self._month_day_row.get_value())
+            if interval == 1:
+                text = f'Monthly on day {day} at {time_str}'
+            else:
+                text = f'Every {interval} months on day {day} at {time_str}'
+        else:
+            text = self._build_calendar_expression()
+
+        self._schedule_summary.set_subtitle(text)
+
+    def _build_calendar_expression(self) -> str:
+        """Build a systemd OnCalendar= expression from the UI state."""
+        idx = self._freq_dropdown.get_selected()
+        mode = FREQ_MODES[idx] if 0 <= idx < len(FREQ_MODES) else 'Weekly'
+
+        if mode == 'Manual only':
+            return ''
+        if mode == 'Custom':
+            return self._custom_expr_row.get_text().strip() or 'daily'
+
+        interval = int(self._interval_row.get_value())
+        hour, minute = self._get_time()
+        time_part = f'{hour:02d}:{minute:02d}:00'
+
+        if mode == 'Weekly':
+            days = [WEEKDAY_SYSTEMD[i] for i, btn in enumerate(self._weekday_buttons) if btn.get_active()]
+            if not days:
+                days = ['Mon']
+            day_str = ','.join(days)
+            # All 7 days selected = daily expression (cleaner)
+            if len(days) == 7:
+                return f'*-*-* {time_part}'
+            return f'{day_str} *-*-* {time_part}'
+
+        if mode == 'Monthly':
+            day = int(self._month_day_row.get_value())
+            if interval == 1:
+                return f'*-*-{day:02d} {time_part}'
+            return f'*-1/{interval}-{day:02d} {time_part}'
+
+        return 'daily'
+
+    def _populate_schedule_from_expression(self, expr: str):
+        """Parse a systemd calendar expression and set the UI controls."""
+        import re
+        expr = expr.strip()
+
+        # Try to detect mode from expression
+        # Weekly: "Mon,Wed *-*-* HH:MM:SS" or "Mon *-*-* HH:MM:SS"
+        weekday_match = re.match(
+            r'^((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:,(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun))*)\s+\*-\*-\*\s+(\d{1,2}):(\d{2}):(\d{2})$',
+            expr)
+        if weekday_match:
+            self._freq_dropdown.set_selected(FREQ_MODES.index('Weekly'))
+            days = weekday_match.group(1).split(',')
+            for i, day in enumerate(WEEKDAY_SYSTEMD):
+                self._weekday_buttons[i].set_active(day in days)
+            self._set_time(int(weekday_match.group(2)), int(weekday_match.group(3)))
+            self._interval_row.set_value(1)
+            self._update_schedule_summary()
+            return
+
+        # Monthly: "*-*-DD HH:MM:SS" or "*-1/N-DD HH:MM:SS"
+        monthly_match = re.match(
+            r'^\*-(?:1/(\d+)|\*)-(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})$', expr)
+        if monthly_match:
+            self._freq_dropdown.set_selected(FREQ_MODES.index('Monthly'))
+            interval_part = monthly_match.group(1)
+            if interval_part:
+                self._interval_row.set_value(int(interval_part))
+            else:
+                self._interval_row.set_value(1)
+            self._month_day_row.set_value(int(monthly_match.group(2)))
+            self._set_time(int(monthly_match.group(3)), int(monthly_match.group(4)))
+            self._update_schedule_summary()
+            return
+
+        # Daily: "*-*-* HH:MM:SS" → Weekly with all days
+        daily_match = re.match(r'^\*-\*-\*\s+(\d{1,2}):(\d{2}):(\d{2})$', expr)
+        if daily_match:
+            self._freq_dropdown.set_selected(FREQ_MODES.index('Weekly'))
+            self._interval_row.set_value(1)
+            for btn in self._weekday_buttons:
+                btn.set_active(True)
+            self._set_time(int(daily_match.group(1)), int(daily_match.group(2)))
+            self._update_schedule_summary()
+            return
+
+        # Daily interval: "*-*-1/N HH:MM:SS" → Custom
+        daily_interval_match = re.match(r'^\*-\*-1/(\d+)\s+(\d{1,2}):(\d{2}):(\d{2})$', expr)
+        if daily_interval_match:
+            self._freq_dropdown.set_selected(FREQ_MODES.index('Custom'))
+            self._custom_expr_row.set_text(expr)
+            self._set_time(int(daily_interval_match.group(2)), int(daily_interval_match.group(3)))
+            self._update_schedule_summary()
+            return
+
+        # Simple keywords
+        if expr == 'daily':
+            self._freq_dropdown.set_selected(FREQ_MODES.index('Weekly'))
+            self._interval_row.set_value(1)
+            for btn in self._weekday_buttons:
+                btn.set_active(True)
+            self._update_schedule_summary()
+            return
+
+        # Fallback: custom
+        self._freq_dropdown.set_selected(FREQ_MODES.index('Custom'))
+        self._custom_expr_row.set_text(expr)
+        self._update_schedule_summary()
 
     def _pick_folder(self, entry_row: Adw.EntryRow):
         """Open a native folder picker dialog."""
@@ -355,22 +597,15 @@ class JobEditorPage(Adw.NavigationPage):
     def _collect_form_data(self) -> dict:
         """Read form fields and return a job dict."""
         # Schedule
-        idx = self._schedule_dropdown.get_selected()
-        _, preset_expr = SCHEDULE_PRESETS[idx] if 0 <= idx < len(SCHEDULE_PRESETS) else ('', '')
+        idx = self._freq_dropdown.get_selected()
+        mode = FREQ_MODES[idx] if 0 <= idx < len(FREQ_MODES) else 'Daily'
 
-        if preset_expr == '__manual__':
+        if mode == 'Manual only':
             schedule = {'type': 'manual', 'expression': '', 'randomized_delay_sec': 0}
-        elif preset_expr == '':
-            # Custom
-            schedule = {
-                'type': 'calendar',
-                'expression': self._custom_expr_row.get_text().strip() or 'daily',
-                'randomized_delay_sec': 0,
-            }
         else:
             schedule = {
                 'type': 'calendar',
-                'expression': preset_expr,
+                'expression': self._build_calendar_expression(),
                 'randomized_delay_sec': 0,
             }
 

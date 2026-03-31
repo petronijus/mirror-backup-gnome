@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
@@ -32,31 +34,28 @@ def _on_done(proc, result, callback):
 
 
 def start_job(service_name: str):
-    """Start a backup service."""
     _run_systemctl(['start', service_name])
 
 
 def stop_job(service_name: str, is_paused: bool = False):
-    """Stop a backup service. If paused, resume first so rsync can clean up."""
     if is_paused:
         _run_systemctl(['kill', '--signal=USR2', service_name])
     _run_systemctl(['stop', service_name])
 
 
 def pause_job(service_name: str):
-    """Send SIGUSR1 to pause rsync."""
     _run_systemctl(['kill', '--signal=USR1', service_name])
 
 
 def resume_job(service_name: str):
-    """Send SIGUSR2 to resume rsync."""
     _run_systemctl(['kill', '--signal=USR2', service_name])
 
 
 def get_timer_info(timer_name: str, callback):
-    """Get next trigger time and last trigger time for a timer.
+    """Get next/last trigger times for a timer.
 
-    callback(next_run: str, last_run: str, error: str | None)
+    callback(next_run_iso: str, last_run_iso: str, error: str | None)
+    Returns ISO timestamps so the UI can compute live countdowns.
     """
     _run_systemctl(
         ['show', timer_name,
@@ -77,16 +76,16 @@ def _parse_timer_info(stdout: str, error, callback):
         if line.startswith('NextElapseUSecRealtime='):
             val = line.split('=', 1)[1].strip()
             if val and val != 'n/a':
-                next_run = _format_timestamp(val)
+                next_run = _parse_systemd_timestamp(val)
         elif line.startswith('LastTriggerUSec='):
             val = line.split('=', 1)[1].strip()
             if val and val != 'n/a':
-                last_run = _format_timestamp(val)
+                last_run = _parse_systemd_timestamp(val)
     callback(next_run, last_run, None)
 
 
 def get_all_timer_info(timer_names: list[str], callback):
-    """Get timer info for multiple timers. callback(dict[timer_name, (next, last)])"""
+    """Get timer info for multiple timers. callback(dict[timer_name, (next_iso, last_iso)])"""
     results = {}
     remaining = [len(timer_names)]
 
@@ -107,33 +106,78 @@ def get_all_timer_info(timer_names: list[str], callback):
         )
 
 
-def _format_timestamp(systemd_ts: str) -> str:
-    """Convert systemd timestamp like 'Thu 2026-03-27 18:00:00 CET' to a readable form."""
-    # systemd outputs like: "Thu 2026-03-27 18:00:00 CET"
-    # We want to show a relative-friendly format
+def _parse_systemd_timestamp(systemd_ts: str) -> str:
+    """Parse systemd timestamp to ISO format.
+
+    Input:  'Thu 2026-03-27 18:00:00 CET'
+    Output: '2026-03-27T18:00:00'
+    """
     parts = systemd_ts.split()
     if len(parts) >= 3:
-        # Return "Thu 18:00" or "Thu Mar 27 18:00" depending on context
-        day_name = parts[0]
         date_part = parts[1]  # 2026-03-27
         time_part = parts[2]  # 18:00:00
+        return f'{date_part}T{time_part}'
+    return ''
 
-        # Parse to check if it's today/tomorrow
-        try:
-            from datetime import datetime
-            dt = datetime.strptime(f'{date_part} {time_part}', '%Y-%m-%d %H:%M:%S')
-            now = datetime.now()
-            diff = (dt.date() - now.date()).days
 
-            time_short = dt.strftime('%H:%M')
-            if diff == 0:
-                return f'Today {time_short}'
-            elif diff == 1:
-                return f'Tomorrow {time_short}'
-            elif diff < 7:
-                return f'{day_name} {time_short}'
-            else:
-                return f'{dt.strftime("%b %d")} {time_short}'
-        except (ValueError, ImportError):
-            return systemd_ts
-    return systemd_ts
+def format_countdown(iso_ts: str) -> str:
+    """Format an ISO timestamp as a countdown string like '2h 15m' or 'in 3d 5h'.
+
+    Returns '' if timestamp is empty or in the past.
+    """
+    if not iso_ts:
+        return ''
+    try:
+        dt = datetime.fromisoformat(iso_ts)
+        now = datetime.now()
+        diff = dt - now
+        total_sec = int(diff.total_seconds())
+
+        if total_sec <= 0:
+            return 'now'
+
+        days = total_sec // 86400
+        hours = (total_sec % 86400) // 3600
+        minutes = (total_sec % 3600) // 60
+
+        if days > 0:
+            return f'in {days}d {hours}h'
+        if hours > 0:
+            return f'in {hours}h {minutes}m'
+        if minutes > 0:
+            return f'in {minutes}m'
+        return f'in {total_sec}s'
+    except (ValueError, TypeError):
+        return ''
+
+
+def format_relative_past(iso_ts: str) -> str:
+    """Format an ISO timestamp as a relative past string like '2h ago' or 'Yesterday 14:30'."""
+    if not iso_ts:
+        return ''
+    try:
+        dt = datetime.fromisoformat(iso_ts)
+        now = datetime.now()
+        diff = now - dt
+        total_sec = int(diff.total_seconds())
+
+        if total_sec < 0:
+            return dt.strftime('%H:%M')
+        if total_sec < 60:
+            return 'just now'
+
+        minutes = total_sec // 60
+        hours = total_sec // 3600
+        days = (now.date() - dt.date()).days
+
+        if days == 0:
+            if hours > 0:
+                return f'{hours}h ago'
+            return f'{minutes}m ago'
+        if days == 1:
+            return f'yesterday {dt.strftime("%H:%M")}'
+        if days < 7:
+            return f'{dt.strftime("%a")} {dt.strftime("%H:%M")}'
+        return dt.strftime('%b %d %H:%M')
+    except (ValueError, TypeError):
+        return ''

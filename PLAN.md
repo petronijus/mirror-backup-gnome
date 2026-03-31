@@ -50,6 +50,9 @@ GTK4 + libadwaita with Python. Native GNOME look and feel.
 - [x] Keyboard shortcuts (Ctrl+N, Ctrl+R, Ctrl+,, Ctrl+?)
 - [x] App menu (hamburger) with Preferences, Shortcuts, About
 - [x] Settings stored as JSON (~/.config/backup-sync/settings.json)
+- [x] Live countdown timers (next run "in 2h 15m") in both app and extension
+- [x] Visual schedule editor: weekday pills, interval spinner, ±30min time stepper, summary line
+- [x] Extension "Open Backup Monitor" button to launch desktop app
 
 ## Phase 5 — Future
 - Flatpak packaging

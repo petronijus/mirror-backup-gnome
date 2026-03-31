@@ -78,9 +78,13 @@ class JobDetailPage(Adw.NavigationPage):
         status_group.add(self._info_row('State', state_display.get(st.state, st.state)))
 
         if self._job.next_run:
-            status_group.add(self._info_row('Next run', self._job.next_run))
+            from backup_monitor.services.systemd_service import format_countdown
+            countdown = format_countdown(self._job.next_run)
+            status_group.add(self._info_row('Next run', countdown or self._job.next_run))
         if self._job.last_run:
-            status_group.add(self._info_row('Last triggered', self._job.last_run))
+            from backup_monitor.services.systemd_service import format_relative_past
+            last = format_relative_past(self._job.last_run)
+            status_group.add(self._info_row('Last triggered', last or self._job.last_run))
 
         if st.state in ('running', 'scanning', 'paused'):
             if st.progress > 0:

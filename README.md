@@ -18,14 +18,21 @@ The GTK4/libadwaita desktop app provides full backup management:
 ### Dashboard
 - Real-time status cards for all backup jobs
 - Progress bars with speed, ETA, file counts
-- Next scheduled run and last trigger times
+- Live countdown to next scheduled run (e.g. "in 2h 15m"), relative last-run time
 - Start/Pause/Resume/Stop controls
 - Click card → detail page, edit pencil → job editor
 
 ### Job Management
 - Create, edit, delete backup jobs from the UI
 - Source/destination folder pickers
-- Schedule presets (daily, every N hours, weekly, custom calendar expression, manual)
+- Visual schedule editor:
+  - **Weekly**: weekday pill buttons (multi-select), interval spinner ("every N weeks")
+  - **Monthly**: day-of-month picker, interval spinner ("every N months")
+  - **Time**: clean HH:MM display with ±30min step buttons
+  - **Custom**: raw systemd calendar expression
+  - **Manual**: no automatic scheduling
+  - Human-readable summary (e.g. "Every week on Mon, Wed, Fri at 22:00")
+  - Daily = weekly with all 7 days selected
 - Visual exclusion pattern editor (add/remove/toggle patterns)
 - Jobs stored in `~/.config/backup-sync/jobs.json`
 - Generates systemd service+timer units on save
@@ -72,7 +79,9 @@ The GTK4/libadwaita desktop app provides full backup management:
 - Panel icon with color-coded status (blue = running, yellow = paused, red = error, gray = queued)
 - Per-job controls: Start, Stop, Pause/Resume
 - Progress bar with speed and ETA
+- Live countdown to next run per job
 - Pulsing icon when backups are active
+- "Open Backup Monitor" button to launch the desktop app
 
 ## Backup Jobs
 
