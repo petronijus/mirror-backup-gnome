@@ -128,6 +128,12 @@ systemctl --user list-timers 'backup-*'
 cat ~/.local/share/backup-sync/logs/backup-secondary.log
 ```
 
+## Error Handling
+
+- **Partial transfer tolerance**: rsync exit codes 23 (permission denied on some files) and 24 (files vanished during transfer) are treated as success with warnings, not failures. This prevents backup jobs from showing as "error" due to a single inaccessible file (e.g. Windows system files on NTFS mounts).
+- **Default excludes**: new exclude files include `$RECYCLE.BIN`, `System Volume Information`, and `WpSystem` by default — common Windows system directories that are inaccessible or irrelevant on Linux.
+- **Interrupted backups**: if a backup is killed (e.g. by system shutdown), the EXIT trap marks it as "error" with "Backup interrupted" message.
+
 ## How It Works
 
 1. **Scheduling**: systemd timers trigger `backup-sync` at configured intervals
