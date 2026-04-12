@@ -3,6 +3,6 @@
   "name": "Backup Monitor",
   "description": "Monitor and control rsync backup jobs managed by systemd timers",
   "shell-version": ["49", "50"],
-  "version": 4,
+  "version": 5,
   "url": "https://github.com/petronijus/Backup-monitor"
 }

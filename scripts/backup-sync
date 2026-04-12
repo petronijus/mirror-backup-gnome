@@ -70,7 +70,7 @@ write_status() {
     local escaped_file escaped_error
     escaped_file=$(json_escape "${CURRENT_FILE:-}")
     escaped_error=$(json_escape "${ERROR_MSG:-}")
-    cat > "$STATUS_FILE" <<-JEOF
+    cat > "${STATUS_FILE}.tmp" <<-JEOF
 {
   "job": "$JOB_NAME",
   "state": "$state",
@@ -91,6 +91,7 @@ write_status() {
   "error": "$escaped_error"
 }
 JEOF
+    mv -f "${STATUS_FILE}.tmp" "$STATUS_FILE"
 }
 
 notify() {
@@ -167,7 +168,7 @@ resume_handler() {
 }
 
 cleanup() {
-    rm -f "$PID_FILE" "$PROGRESS_FILE" "${PROGRESS_FILE}.tmp"
+    rm -f "$PID_FILE" "$PROGRESS_FILE" "${PROGRESS_FILE}.tmp" "${STATUS_FILE}.tmp"
     if [[ "$FINISHED" -eq 0 ]]; then
         ERROR_MSG="Backup interrupted"
         write_status "error"
