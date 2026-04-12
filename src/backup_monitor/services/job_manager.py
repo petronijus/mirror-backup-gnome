@@ -378,10 +378,20 @@ def write_exclusions(exclude_file: str, entries: list[dict]):
     path.write_text('\n'.join(lines) + '\n')
 
 
+DEFAULT_EXCLUDES = """\
+# Exclude patterns for rsync (one per line)
+
+# Windows system directories (typically inaccessible from Linux)
+$RECYCLE.BIN
+System Volume Information
+WpSystem
+"""
+
+
 def create_exclude_file(job_id: str) -> str:
-    """Create a new empty exclude file and return its path."""
+    """Create a new exclude file with sensible defaults and return its path."""
     path = EXCLUDE_DIR / f'{job_id}.exclude'
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text('# Exclude patterns for rsync (one per line)\n')
+        path.write_text(DEFAULT_EXCLUDES)
     return str(path)

@@ -330,12 +330,18 @@ fi
 # --- finish ---
 
 FINISHED=1
-if [[ "$RSYNC_EXIT" -eq 0 ]]; then
+if [[ "$RSYNC_EXIT" -eq 0 || "$RSYNC_EXIT" -eq 23 || "$RSYNC_EXIT" -eq 24 ]]; then
     LAST_PCT=100
     CURRENT_FILE=""
-    ERROR_MSG=""
+    if [[ "$RSYNC_EXIT" -ne 0 ]]; then
+        ERROR_MSG="Partial transfer (exit $RSYNC_EXIT) — some files skipped"
+        notify "✔ $JOB_NAME" "Backup completed with warnings (exit $RSYNC_EXIT)"
+    else
+        ERROR_MSG=""
+        notify "✔ $JOB_NAME" "Backup completed"
+    fi
     write_status "idle"
-    notify "✔ $JOB_NAME" "Backup completed"
+    RSYNC_EXIT=0
 else
     ERROR_MSG=$(tail -5 "$LOG_FILE" 2>/dev/null | grep -v '^===' | head -3 | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//') || true
     write_status "error"
