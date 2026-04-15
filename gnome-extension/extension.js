@@ -593,7 +593,15 @@ export default class BackupMonitorExtension extends Extension {
                     opacity: 255,
                     duration: 1000,
                     mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
-                    onComplete: () => this._doPulse(),
+                    onComplete: () => {
+                        // Break synchronous recursion — Clutter may fire
+                        // onComplete immediately if the animation is skipped,
+                        // causing "too much recursion" stack overflow.
+                        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                            this._doPulse();
+                            return GLib.SOURCE_REMOVE;
+                        });
+                    },
                 });
             },
         });
