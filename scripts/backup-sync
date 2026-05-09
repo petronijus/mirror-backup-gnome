@@ -318,8 +318,9 @@ done
 sleep 0.5
 parse_progress || true
 
-wait "$RSYNC_PID" 2>/dev/null
-RSYNC_EXIT=$?
+# Capture rsync exit code without tripping `set -e` on non-zero (e.g. 23 = partial)
+RSYNC_EXIT=0
+wait "$RSYNC_PID" 2>/dev/null || RSYNC_EXIT=$?
 
 # --- archive cleanup ---
 
