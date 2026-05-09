@@ -255,7 +255,11 @@ class BackupJobSection {
             error: 'Error',
         };
         const isSuccess = state === 'idle' && (status?.progress ?? 0) >= 100;
-        this._stateLabel.text = names[state] ?? state;
+        const streak = status?.consecutive_failures ?? 0;
+        let stateText = names[state] ?? state;
+        if (streak >= 2)
+            stateText = `${stateText}  ${streak}×`;
+        this._stateLabel.text = stateText;
         this._dot.style_class = isSuccess
             ? 'bm-dot bm-dot-success' : `bm-dot bm-dot-${state}`;
 

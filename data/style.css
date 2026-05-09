@@ -70,6 +70,13 @@
     background: alpha(@error_color, 0.12);
 }
 
+.bm-state-attention {
+    color: @error_color;
+    background: alpha(@error_color, 0.18);
+    font-variant-numeric: tabular-nums;
+    margin-right: 6px;
+}
+
 /* ── Progress bar ── */
 
 .bm-progress {

@@ -34,8 +34,13 @@ SCAN_READ=""
 FINISHED=0
 IS_PAUSED=0
 SEEN_PROGRESS=0
+CONSECUTIVE_FAILURES=0
+SUGGESTED_EXCLUDES_JSON="[]"
 START_TIME="$(date -Iseconds)"
 START_EPOCH="$(date +%s)"
+
+HISTORY_KEEP="${BACKUP_SYNC_HISTORY_KEEP:-200}"
+FAILURE_STREAK_THRESHOLD="${BACKUP_SYNC_STREAK_THRESHOLD:-3}"
 
 # --- helpers ---
 
@@ -88,19 +93,105 @@ write_status() {
   "scan_read": "${SCAN_READ:-}",
   "src": "$SRC",
   "dst": "$DST",
-  "error": "$escaped_error"
+  "error": "$escaped_error",
+  "consecutive_failures": ${CONSECUTIVE_FAILURES:-0},
+  "suggested_excludes": ${SUGGESTED_EXCLUDES_JSON:-[]}
 }
 JEOF
     mv -f "${STATUS_FILE}.tmp" "$STATUS_FILE"
 }
 
+# notify <summary> <body> [urgency] [expire_ms]
+# urgency: 0=low, 1=normal (default), 2=critical
+# expire_ms: 0 = never auto-dismiss (sticky), default 5000
 notify() {
+    local urgency="${3:-1}"
+    local expire="${4:-5000}"
     gdbus call --session \
         --dest=org.freedesktop.Notifications \
         --object-path=/org/freedesktop/Notifications \
         --method=org.freedesktop.Notifications.Notify \
-        "Backup Sync" 0 "drive-harddisk" "$1" "$2" '[]' '{}' 5000 \
+        "Backup Sync" 0 "drive-harddisk" "$1" "$2" '[]' \
+        "{'urgency': <byte $urgency>}" "$expire" \
         >/dev/null 2>&1 || true
+}
+
+# Count trailing failures in the history JSONL (newest entries first walk-back).
+# Stops at the first successful entry. Echoes the streak count.
+compute_failure_streak() {
+    local file="$1"
+    [[ -f "$file" ]] || { echo 0; return; }
+    awk '
+        { lines[NR] = $0 }
+        END {
+            streak = 0
+            for (i = NR; i >= 1; i--) {
+                if (lines[i] ~ /"exit_code":[[:space:]]*0,/) break
+                if (lines[i] ~ /"exit_code":[[:space:]]*[0-9]+,/) streak++
+            }
+            print streak
+        }
+    ' "$file"
+}
+
+# Trim history file to last N entries (atomic via temp + rename).
+rotate_history() {
+    local file="$1" keep="$2"
+    [[ -f "$file" ]] || return 0
+    local lines
+    lines=$(wc -l < "$file" 2>/dev/null) || return 0
+    if (( lines > keep )); then
+        tail -n "$keep" "$file" > "${file}.tmp" && mv -f "${file}.tmp" "$file"
+    fi
+}
+
+# Scan the CURRENT run's log section for "Permission denied" rsync errors and
+# emit deduped top-level paths (relative to SRC) that the user can add to the
+# exclude file. Looks only at lines after the `=== <START_TIME> ===` marker so
+# a previously-resolved error doesn't keep showing up.
+# Output: one path per line on stdout (empty if no errors).
+# Implemented as a single awk so empty matches don't trip pipefail+set -e.
+suggest_excludes_from_log() {
+    [[ -f "$LOG_FILE" ]] || return 0
+    local src_clean="${SRC%/}"
+    local marker="=== ${START_TIME} ==="
+    awk -v marker="$marker" -v src="$src_clean" '
+        BEGIN { srclen = length(src) + 1 }
+        !found {
+            if (index($0, marker) == 1) found = 1
+            next
+        }
+        /Permission denied/ {
+            if (match($0, /"[^"]+"/)) {
+                path = substr($0, RSTART + 1, RLENGTH - 2)
+                if (substr(path, 1, srclen) == src "/") {
+                    rel = substr(path, srclen + 1)
+                    slash = index(rel, "/")
+                    top = (slash > 0) ? substr(rel, 1, slash - 1) : rel
+                    if (top != "") seen[top] = 1
+                }
+            }
+        }
+        END { for (s in seen) print s }
+    ' "$LOG_FILE" | sort
+}
+
+# Build a JSON array literal from newline-delimited stdin, e.g. "a\nb\n" → ["a","b"]
+to_json_array() {
+    local first=1 out="["
+    while IFS= read -r item; do
+        [[ -z "$item" ]] && continue
+        local escaped
+        escaped=$(json_escape "$item")
+        if (( first )); then
+            out+="\"$escaped\""
+            first=0
+        else
+            out+=",\"$escaped\""
+        fi
+    done
+    out+="]"
+    printf '%s' "$out"
 }
 
 parse_progress() {
@@ -329,39 +420,66 @@ if [[ "$ARCHIVE_DAYS" -gt 0 && -d "$DST/.archive" ]]; then
     rmdir "$DST/.archive" 2>/dev/null || true
 fi
 
-# --- finish ---
+# --- finish: classify outcome ---
 
 FINISHED=1
+FINAL_STATE="idle"
 if [[ "$RSYNC_EXIT" -eq 0 || "$RSYNC_EXIT" -eq 23 || "$RSYNC_EXIT" -eq 24 ]]; then
     LAST_PCT=100
     CURRENT_FILE=""
     if [[ "$RSYNC_EXIT" -ne 0 ]]; then
         ERROR_MSG="Partial transfer (exit $RSYNC_EXIT) — some files skipped"
-        notify "✔ $JOB_NAME" "Backup completed with warnings (exit $RSYNC_EXIT)"
     else
         ERROR_MSG=""
-        notify "✔ $JOB_NAME" "Backup completed"
     fi
-    write_status "idle"
+    HISTORY_EXIT=0  # tolerate 23/24 as success in history
     RSYNC_EXIT=0
 else
     ERROR_MSG=$(tail -5 "$LOG_FILE" 2>/dev/null | grep -v '^===' | head -3 | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//') || true
-    write_status "error"
-    notify "✖ $JOB_NAME" "Backup failed (exit $RSYNC_EXIT)"
+    FINAL_STATE="error"
+    HISTORY_EXIT="$RSYNC_EXIT"
 fi
 
-# --- write history entry ---
+# --- write history entry (must happen before streak compute) ---
 
 FINISH_TIME="$(date -Iseconds)"
 FINISH_EPOCH="$(date +%s)"
 DURATION_SEC=$(( FINISH_EPOCH - START_EPOCH ))
 HISTORY_FILE="$HISTORY_DIR/$JOB_NAME.jsonl"
 printf '{"started":"%s","finished":"%s","duration_sec":%d,"exit_code":%d,"files_transferred":%d,"files_total":%d,"error":"%s"}\n' \
-    "$START_TIME" "$FINISH_TIME" "$DURATION_SEC" "$RSYNC_EXIT" \
+    "$START_TIME" "$FINISH_TIME" "$DURATION_SEC" "$HISTORY_EXIT" \
     "${FILES_XFRD:-0}" "${FILES_TOTAL:-0}" \
     "$(json_escape "${ERROR_MSG:-}")" \
     >> "$HISTORY_FILE"
 
+# --- compute consecutive failure streak + detect suggested excludes ---
+
+CONSECUTIVE_FAILURES=$(compute_failure_streak "$HISTORY_FILE")
+SUGGESTED_EXCLUDES_JSON=$(suggest_excludes_from_log | to_json_array)
+
+# --- write final status (with streak + suggestions) and notify ---
+
+write_status "$FINAL_STATE"
+
+if [[ "$FINAL_STATE" == "idle" ]]; then
+    if [[ -n "$ERROR_MSG" ]]; then
+        notify "✔ $JOB_NAME" "Backup completed with warnings"
+    else
+        notify "✔ $JOB_NAME" "Backup completed"
+    fi
+elif (( CONSECUTIVE_FAILURES >= FAILURE_STREAK_THRESHOLD )); then
+    # Persistent failure — escalate to critical urgency, sticky until dismissed
+    notify "✖ $JOB_NAME failed ${CONSECUTIVE_FAILURES}× in a row" \
+        "${ERROR_MSG:-Backup failed (exit $HISTORY_EXIT)}" 2 0
+else
+    notify "✖ $JOB_NAME" "Backup failed (exit $HISTORY_EXIT)"
+fi
+
 rm -f "$PROGRESS_FILE"
 echo "=== $(date -Iseconds) === finished (exit $RSYNC_EXIT) ===" >> "$LOG_FILE"
+
+# --- rotate history (keeps file from growing unbounded) ---
+
+rotate_history "$HISTORY_FILE" "$HISTORY_KEEP"
+
 exit "$RSYNC_EXIT"

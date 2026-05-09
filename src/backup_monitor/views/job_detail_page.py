@@ -102,6 +102,18 @@ class JobDetailPage(Adw.NavigationPage):
             error_row.add_css_class('error')
             status_group.add(error_row)
 
+        if st.consecutive_failures >= 2:
+            streak_row = self._info_row(
+                'Persistent failure',
+                f'Failed {st.consecutive_failures} runs in a row',
+            )
+            streak_row.add_css_class('error')
+            status_group.add(streak_row)
+
+        # ── Suggested excludes ──
+        if st.suggested_excludes and self._job.exclude_file:
+            self._build_suggested_excludes(content, st.suggested_excludes)
+
         # ── Statistics ──
         entries = read_history(self._job.id)
         stats = compute_stats(entries)
@@ -146,6 +158,64 @@ class JobDetailPage(Adw.NavigationPage):
         row = Adw.ActionRow(title=title, subtitle=value)
         row.set_subtitle_selectable(True)
         return row
+
+    def _build_suggested_excludes(self, parent: Gtk.Box, paths: list[str]) -> None:
+        """Add an Adw.PreferencesGroup with one row per suggested exclude path.
+
+        Each row has an "Add to exclude" button that appends to the job's
+        exclude file. After click, the row is hidden so the user gets visual
+        confirmation without needing to re-read the page.
+        """
+        group = Adw.PreferencesGroup(
+            title='Suggested excludes',
+            description=(
+                'Permission errors during the last run. '
+                'Add to the exclude file to silence them.'
+            ),
+        )
+        parent.append(group)
+
+        for path in paths:
+            row = Adw.ActionRow(title=path)
+            row.set_subtitle_selectable(True)
+
+            btn = Gtk.Button(
+                label='Add to exclude',
+                css_classes=['flat'],
+                valign=Gtk.Align.CENTER,
+            )
+            btn.connect('clicked', self._on_add_exclude, path, row)
+            row.add_suffix(btn)
+
+            group.add(row)
+
+    def _on_add_exclude(self, btn: Gtk.Button, path: str, row: Adw.ActionRow) -> None:
+        """Append a path to the job's exclude file (idempotent)."""
+        from pathlib import Path
+
+        exclude_path = Path(self._job.exclude_file).expanduser()
+        try:
+            existing = ''
+            if exclude_path.is_file():
+                existing = exclude_path.read_text()
+
+            # Skip if already present (allow leading whitespace, ignore comments)
+            for line in existing.splitlines():
+                if line.strip() == path:
+                    btn.set_label('Already in exclude')
+                    btn.set_sensitive(False)
+                    return
+
+            with exclude_path.open('a') as f:
+                if existing and not existing.endswith('\n'):
+                    f.write('\n')
+                f.write(f'{path}\n')
+
+            btn.set_label('Added ✓')
+            btn.set_sensitive(False)
+        except OSError as e:
+            btn.set_label(f'Error: {e}')
+            btn.set_sensitive(False)
 
     def _history_row(self, entry: HistoryEntry) -> Adw.ActionRow:
         icon = 'emblem-ok-symbolic' if entry.success else 'dialog-error-symbolic'

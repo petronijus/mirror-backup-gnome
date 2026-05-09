@@ -65,6 +65,16 @@ class JobCard(Gtk.Box):
         )
         row1.append(self._name_label)
 
+        # Streak badge — shows "Nx" for consecutive failures, hidden otherwise
+        self._streak_badge = Gtk.Label(
+            label='',
+            css_classes=['bm-state-badge', 'bm-state-attention'],
+            valign=Gtk.Align.CENTER,
+            visible=False,
+            tooltip_text='Failed several times in a row',
+        )
+        row1.append(self._streak_badge)
+
         self._state_badge = Gtk.Label(
             label='Idle',
             css_classes=['bm-state-badge', 'bm-state-idle'],
@@ -286,6 +296,13 @@ class JobCard(Gtk.Box):
             self._error_label.set_visible(True)
         else:
             self._error_label.set_visible(False)
+
+        # Persistent failure streak badge
+        if st.consecutive_failures >= 2:
+            self._streak_badge.set_label(f'{st.consecutive_failures}×')
+            self._streak_badge.set_visible(True)
+        else:
+            self._streak_badge.set_visible(False)
 
         # Buttons
         self._start_btn.set_visible(not is_active and not is_queued)

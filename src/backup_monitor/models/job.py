@@ -30,6 +30,8 @@ class BackupStatus:
     scan_read: str = ''
     source: str = ''
     destination: str = ''
+    consecutive_failures: int = 0
+    suggested_excludes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -71,6 +73,8 @@ class BackupJob:
                 scan_read=data.get('scan_read', ''),
                 source=data.get('source', ''),
                 destination=data.get('destination', ''),
+                consecutive_failures=int(data.get('consecutive_failures', 0)),
+                suggested_excludes=list(data.get('suggested_excludes', [])),
             )
             # Validate PID liveness for active states
             if st.state in ('running', 'scanning', 'paused', 'queued') and not _is_alive(st.pid):
