@@ -1,8 +1,8 @@
 [Unit]
-Description=Backup Photos every 4 days
+Description=Backup Photos Mon/Fri 22:00
 
 [Timer]
-OnCalendar=*-*-1/4 22:00:00
+OnCalendar=Mon,Fri *-*-* 22:00:00
 Persistent=true
 
 [Install]

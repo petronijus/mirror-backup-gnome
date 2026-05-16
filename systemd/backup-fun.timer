@@ -1,8 +1,8 @@
 [Unit]
-Description=Backup FUN daily
+Description=Backup FUN weekly (Sun)
 
 [Timer]
-OnCalendar=daily
+OnCalendar=Sun *-*-* 00:00:00
 Persistent=true
 
 [Install]

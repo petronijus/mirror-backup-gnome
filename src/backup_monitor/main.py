@@ -59,7 +59,36 @@ class BackupMonitorApp(Adw.Application):
                 break
 
 
+def _regenerate_units() -> int:
+    """Rewrite all .timer/.service units from jobs.json (authoritative)."""
+    from backup_monitor.services.job_manager import JobManager
+
+    mgr = JobManager()
+    jobs = mgr.jobs
+    if not jobs:
+        print('[regenerate-units] No jobs in jobs.json — nothing to do.')
+        return 0
+
+    for job in jobs:
+        mgr._generate_systemd_units(job)
+        print(f"[regenerate-units] wrote {job['id']}.service + .timer "
+              f"({job.get('schedule', {}).get('expression', '?')})")
+
+    mgr._daemon_reload()
+
+    for job in jobs:
+        if job.get('enabled', True):
+            mgr._enable_timer(job['id'])
+        else:
+            mgr._disable_timer(job['id'])
+
+    print(f'[regenerate-units] done — {len(jobs)} job(s) regenerated.')
+    return 0
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == '--regenerate-units':
+        return _regenerate_units()
     app = BackupMonitorApp()
     return app.run(sys.argv)
 
