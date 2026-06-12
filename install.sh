@@ -15,8 +15,8 @@ install -Dm755 "$SCRIPT_DIR/scripts/backup-sync" "$HOME/.local/bin/backup-sync"
 # 2. Config / exclude files
 echo "Installing config files..."
 mkdir -p "$HOME/.config/backup-sync"
-for f in "$SCRIPT_DIR"/config/*; do
-    install -Dm644 "$f" "$HOME/.config/backup-sync/$(basename "$f")"
+for f in "$SCRIPT_DIR"/config/* "$SCRIPT_DIR"/private/configs/exclude/*; do
+    [ -f "$f" ] && install -Dm644 "$f" "$HOME/.config/backup-sync/$(basename "$f")"
 done
 
 # 3. Data directories
@@ -26,26 +26,33 @@ mkdir -p "$HOME/.local/share/backup-sync/history"
 
 # 4. Systemd units
 # If jobs.json already exists, it is authoritative — regenerate units from it
-# AFTER the desktop app bundle is installed (step 6). Otherwise bootstrap from
-# the bundled templates so the first-run migration in JobManager can pick them up.
+# AFTER the desktop app bundle is installed (step 6). Otherwise, if a private
+# overlay ships unit files (private/configs/systemd/), bootstrap from those so
+# the first-run migration in JobManager can pick them up. A plain checkout has
+# no bundled jobs: the install stays job-less and you create jobs in the app.
 mkdir -p "$HOME/.config/systemd/user"
 JOBS_FILE="$HOME/.config/backup-sync/jobs.json"
+PRIVATE_UNITS="$SCRIPT_DIR/private/configs/systemd"
+REGENERATE_FROM_JOBS=0
 if [ -f "$JOBS_FILE" ]; then
     echo "Existing jobs.json detected — will regenerate units after app install (step 9)."
     REGENERATE_FROM_JOBS=1
-else
-    echo "Bootstrapping systemd user units from templates (first install)..."
-    for f in "$SCRIPT_DIR"/systemd/*; do
+elif [ -d "$PRIVATE_UNITS" ]; then
+    echo "Bootstrapping systemd user units from the private overlay (first install)..."
+    for f in "$PRIVATE_UNITS"/*; do
         install -Dm644 "$f" "$HOME/.config/systemd/user/$(basename "$f")"
     done
     systemctl --user daemon-reload
-    REGENERATE_FROM_JOBS=0
 
     echo "Enabling backup timers..."
-    for timer in backup-secondary.timer backup-fun.timer backup-music.timer backup-photos.timer; do
+    for t in "$PRIVATE_UNITS"/*.timer; do
+        timer="$(basename "$t")"
         systemctl --user enable --now "$timer"
         echo "  ✔ $timer enabled"
     done
+else
+    echo "No existing jobs and no private overlay — starting clean."
+    echo "Create your backup jobs in the desktop app after install."
 fi
 
 # 6. GNOME extension (includes bundled desktop app)

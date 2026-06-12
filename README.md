@@ -85,21 +85,34 @@ The GTK4/libadwaita desktop app provides full backup management:
 
 ## Backup Jobs
 
+Jobs are created and managed in the desktop app and stored in
+`~/.config/backup-sync/jobs.json` (the source of truth — systemd units are
+generated from it). A typical setup looks like:
+
 | Job | Source | Destination | Schedule | Archive |
 |-----|--------|-------------|----------|---------|
-| `backup-secondary` | `/mnt/SECONDARY/` | `/mnt/DATA-SLOW/BACKUP/SECONDARY/` | Every 2 days | 60 days |
-| `backup-fun` | `/mnt/FUN/` | `/mnt/DATA-SLOW/BACKUP/FUN/` | Daily | None |
-| `backup-music` | `/mnt/SECONDARY/music/` | `/mnt/DATA-FAST/Music/` | Every 6 hours | None |
-| `backup-photos` | `/mnt/DATA-FAST/Photos/` | `/mnt/SECONDARY/Photos/` | Every 4 days | None |
+| `backup-data` | `/mnt/DATA/` | `/mnt/BACKUP/DATA/` | Every 2 days | 60 days |
+| `backup-music` | `/mnt/DATA/music/` | `/mnt/FAST/Music/` | Every 6 hours | None |
+| `backup-photos` | `/mnt/FAST/Photos/` | `/mnt/DATA/Photos/` | Every 4 days | None |
 
 ## Install
+
+**From a release** (recommended): download the extension zip from
+[Releases](../../releases) and
+
+```bash
+gnome-extensions install --force backup-monitor@petronijus.zip
+```
+
+**From source**:
 
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
 
-Then restart GNOME Shell (log out/in on Wayland, or Alt+F2 → `r` on X11).
+Then restart GNOME Shell (log out/in on Wayland, or Alt+F2 → `r` on X11) and
+create your backup jobs in the desktop app (panel menu → Open Backup Monitor).
 
 ## Uninstall
 
@@ -163,7 +176,13 @@ cat ~/.local/share/backup-sync/logs/backup-secondary.log
 ~/.local/share/gnome-shell/extensions/backup-monitor@petronijus/
 ```
 
-## Ported from BvckUp2
+## Origin
 
-Original Windows config was at `%LOCALAPPDATA%\Bvckup2\engine\backup-000{1,3,4,5}\settings.ini`.
-Drive mapping: `E:` = SECONDARY, `F:` = FUN, `Z:` = DATA-SLOW, `Y:` = DATA-FAST.
+Built as a Linux replacement for [Bvckup 2](https://bvckup2.com/) after
+switching the author's desktop from Windows — same "set up jobs once, watch
+them in the corner of your eye" philosophy, reimplemented on rsync + systemd +
+GNOME Shell.
+
+## License
+
+[MIT](LICENSE)

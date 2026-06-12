@@ -13,3 +13,6 @@ build/
 # IDE
 .vscode/
 .idea/
+
+# Private overlay (clone of backup-monitor-private)
+/private/

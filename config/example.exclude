@@ -1,0 +1,9 @@
+# rsync exclude patterns — one per line (rsync --exclude-from syntax).
+# Assign an exclude file to a job in the desktop app's job editor.
+.cache/
+.Trash-*/
+lost+found/
+*.tmp
+*.partial
+node_modules/
+__pycache__/

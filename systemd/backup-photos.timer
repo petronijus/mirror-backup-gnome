@@ -1,9 +1,0 @@
-[Unit]
-Description=Backup Photos Mon/Fri 22:00
-
-[Timer]
-OnCalendar=Mon,Fri *-*-* 22:00:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target

@@ -38,10 +38,6 @@ cp "$SCRIPT_DIR/scripts/backup-sync" "$EXT_BUILD/scripts/"
 mkdir -p "$EXT_BUILD/config"
 cp "$SCRIPT_DIR"/config/* "$EXT_BUILD/config/" 2>/dev/null || true
 
-# Bundle systemd unit templates
-mkdir -p "$EXT_BUILD/systemd"
-cp "$SCRIPT_DIR"/systemd/* "$EXT_BUILD/systemd/"
-
 # Remove __pycache__
 find "$EXT_BUILD" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 find "$EXT_BUILD" -name '*.pyc' -delete 2>/dev/null || true

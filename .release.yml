@@ -1,0 +1,18 @@
+name: Backup-monitor
+tag_format: v{version}
+version_files:
+  - path: src/backup_monitor/__init__.py   # APP_VERSION = 'X.Y.Z'
+changelog: CHANGELOG.md
+artifacts:
+  mode: ci
+  ci_workflow: release.yml
+  expect_assets:
+    - "backup-monitor@petronijus.zip"
+    - "backup-monitor-v*.tar.gz"
+registry:
+  images: []
+preflight_extra:
+  - bash -n install.sh build.sh uninstall.sh scripts/backup-sync
+notes: |
+  metadata.json "version" is the e.g.o integer — bump it manually whenever
+  gnome-extension/ or the bundled app changes.
