@@ -1,6 +1,6 @@
 # Backup Monitor
 
-Linux replacement for BvckUp2 — rsync-based backup with systemd scheduling, GNOME Shell panel integration, and a GTK4/libadwaita desktop app.
+Rsync-based backup for Linux with systemd scheduling, a GNOME Shell panel indicator, and a GTK4/libadwaita desktop app — set up jobs once, watch them in the corner of your eye.
 
 ## Components
 
@@ -176,12 +176,19 @@ cat ~/.local/share/backup-sync/logs/backup-secondary.log
 ~/.local/share/gnome-shell/extensions/backup-monitor@petronijus/
 ```
 
-## Origin
+## Releases
 
-Built as a Linux replacement for [Bvckup 2](https://bvckup2.com/) after
-switching the author's desktop from Windows — same "set up jobs once, watch
-them in the corner of your eye" philosophy, reimplemented on rsync + systemd +
-GNOME Shell.
+Everything ships as a single GNOME Shell extension with the desktop app
+bundled inside. Tags `vX.Y.Z` build two artifacts in CI and attach them to the
+GitHub release:
+
+- `backup-monitor@petronijus.zip` — the extension, installable with
+  `gnome-extensions install --force <zip>` (no root needed; log out/in to
+  activate). Includes the panel indicator, the bundled GTK4 app and the
+  `backup-sync` script.
+- `backup-monitor-vX.Y.Z.tar.gz` — source tarball for `./install.sh` installs.
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## License
 
