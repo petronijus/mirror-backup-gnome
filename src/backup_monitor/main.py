@@ -1,4 +1,4 @@
-"""Backup Monitor — GTK4/libadwaita desktop app for managing rsync backups."""
+"""Mirror Backup for GNOME — GTK4/libadwaita desktop app for managing rsync backups."""
 
 from __future__ import annotations
 

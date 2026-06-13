@@ -1,4 +1,4 @@
-# Backup Monitor Desktop App — Implementation Plan
+# Mirror Backup for GNOME — Desktop App — Implementation Plan
 
 ## Architecture Philosophy
 - **GNOME Shell extension** = primary daily interface (panel indicator, quick status, controls)
@@ -52,7 +52,7 @@ GTK4 + libadwaita with Python. Native GNOME look and feel.
 - [x] Settings stored as JSON (~/.config/backup-sync/settings.json)
 - [x] Live countdown timers (next run "in 2h 15m") in both app and extension
 - [x] Visual schedule editor: weekday pills, interval spinner, ±30min time stepper, summary line
-- [x] Extension "Open Backup Monitor" button to launch desktop app
+- [x] Extension "Open Mirror Backup" button to launch desktop app
 
 ## Phase 5 — Future
 - Flatpak packaging

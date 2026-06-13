@@ -26,7 +26,7 @@ class BackupMonitorWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(
             application=app,
-            title='Backup Monitor',
+            title='Mirror Backup for GNOME',
             default_width=550,
             default_height=700,
         )
@@ -44,7 +44,7 @@ class BackupMonitorWindow(Adw.ApplicationWindow):
         self._toast_overlay.set_child(self._nav_view)
 
         # Dashboard as root page
-        dashboard_nav_page = Adw.NavigationPage(title='Backup Monitor')
+        dashboard_nav_page = Adw.NavigationPage(title='Mirror Backup')
         self._nav_view.push(dashboard_nav_page)
 
         # Dashboard toolbar view (header + content)
@@ -172,7 +172,7 @@ class BackupMonitorWindow(Adw.ApplicationWindow):
     def _on_about(self, action, param):
         from backup_monitor import APP_VERSION
         about = Adw.AboutDialog(
-            application_name='Backup Monitor',
+            application_name='Mirror Backup for GNOME',
             application_icon='drive-harddisk-symbolic',
             version=APP_VERSION,
             developer_name='Petr Parkan Janda',

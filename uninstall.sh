@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Uninstall backup-monitor
+# Uninstall Mirror Backup for GNOME
 set -euo pipefail
 
 EXT_UUID="backup-monitor@petronijus"
 
-echo "=== Backup Monitor Uninstaller ==="
+echo "=== Mirror Backup for GNOME Uninstaller ==="
 
 # 1. Stop and disable timers
 echo "Stopping backup timers..."

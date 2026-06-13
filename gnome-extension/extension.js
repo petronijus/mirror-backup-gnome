@@ -405,7 +405,7 @@ export default class BackupMonitorExtension extends Extension {
         // First-run setup: install backup-sync script and create directories
         this._firstRunSetup();
 
-        this._indicator = new PanelMenu.Button(0.0, 'Backup Monitor', false);
+        this._indicator = new PanelMenu.Button(0.0, 'Mirror Backup for GNOME', false);
 
         this._panelIcon = new St.Icon({
             icon_name: 'drive-harddisk-symbolic',
@@ -422,8 +422,8 @@ export default class BackupMonitorExtension extends Extension {
             this._jobSections.push(section);
         }
 
-        // "Open Backup Monitor" button at the bottom
-        const openAppItem = new PopupMenu.PopupMenuItem('Open Backup Monitor');
+        // "Open Mirror Backup" button at the bottom
+        const openAppItem = new PopupMenu.PopupMenuItem('Open Mirror Backup');
         openAppItem.label.add_style_class_name('bm-open-app');
         const extPath = this.dir.get_path();
         openAppItem.connect('activate', () => {

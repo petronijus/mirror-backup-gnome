@@ -1,8 +1,8 @@
 {
   "uuid": "backup-monitor@petronijus",
-  "name": "Backup Monitor",
-  "description": "Monitor and control rsync backup jobs managed by systemd timers",
+  "name": "Mirror Backup for GNOME",
+  "description": "Scheduled rsync mirroring with a live panel indicator and a desktop app.",
   "shell-version": ["49", "50"],
   "version": 6,
-  "url": "https://github.com/petronijus/Backup-monitor"
+  "url": "https://github.com/petronijus/mirror-backup-gnome"
 }

@@ -1,4 +1,4 @@
-# Backup Monitor
+# Mirror Backup for GNOME
 
 Linux rsync backup system: `scripts/backup-sync` (bash) + systemd user timers +
 GNOME Shell extension (`gnome-extension/`) + GTK4/libadwaita app
@@ -13,6 +13,6 @@ truth; the app generates systemd units from it. See README for architecture.
   `src/backup_monitor/__init__.py` (`APP_VERSION`); `metadata.json` `version`
   is the separate e.g.o integer — bump when extension content changes.
 - Private overlay: `private/` (gitignored) = clone of
-  `petronijus/backup-monitor-private` — Petr's real job units + excludes.
+  `petronijus/mirror-backup-gnome-private` — Petr's real job units + excludes.
   `install.sh` bootstraps jobs from `private/configs/systemd/` when present.
-  Bootstrap: `git clone git@github.com:petronijus/backup-monitor-private.git private`
+  Bootstrap: `git clone git@github.com:petronijus/mirror-backup-gnome-private.git private`

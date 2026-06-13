@@ -1,4 +1,4 @@
-name: Backup-monitor
+name: mirror-backup-gnome
 tag_format: v{version}
 version_files:
   - path: src/backup_monitor/__init__.py   # APP_VERSION = 'X.Y.Z'
@@ -8,7 +8,7 @@ artifacts:
   ci_workflow: release.yml
   expect_assets:
     - "backup-monitor@petronijus.zip"
-    - "backup-monitor-v*.tar.gz"
+    - "mirror-backup-gnome-v*.tar.gz"
 registry:
   images: []
 preflight_extra:

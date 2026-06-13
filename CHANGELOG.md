@@ -1,10 +1,15 @@
 # Changelog
 
-All notable changes to Backup Monitor. Format follows
+All notable changes to Mirror Backup for GNOME. Format follows
 [Keep a Changelog](https://keepachangelog.com/), versioning follows
 [SemVer](https://semver.org/) (0.x = no stability promises).
 
 ## [Unreleased]
+### Changed
+- Renamed to **Mirror Backup for GNOME** (was "Backup Monitor") with the tagline
+  "Scheduled rsync mirroring, watched live from your GNOME panel". Display names,
+  README and repo renamed; technical identifiers (extension UUID, `backup-sync`
+  config paths, desktop file id) are unchanged, so existing installs keep working.
 
 ## [0.5.0] - 2026-06-12
 

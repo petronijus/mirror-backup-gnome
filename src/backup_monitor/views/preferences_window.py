@@ -11,7 +11,7 @@ from backup_monitor.models.settings import Settings
 
 
 class PreferencesWindow(Adw.PreferencesWindow):
-    """Global preferences for Backup Monitor."""
+    """Global preferences for Mirror Backup for GNOME."""
 
     __gtype_name__ = 'PreferencesWindow'
 

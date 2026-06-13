@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Install backup-monitor: script, configs, systemd units, GNOME extension + desktop app
+# Install Mirror Backup for GNOME: script, configs, systemd units, GNOME extension + desktop app
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EXT_UUID="backup-monitor@petronijus"
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
 
-echo "=== Backup Monitor Installer ==="
+echo "=== Mirror Backup for GNOME Installer ==="
 
 # 1. Main sync script
 echo "Installing backup-sync script..."
@@ -77,7 +77,7 @@ echo "Installing desktop launcher..."
 mkdir -p "$HOME/.local/share/applications"
 cat > "$HOME/.local/share/applications/com.github.petronijus.BackupMonitor.desktop" <<DEOF
 [Desktop Entry]
-Name=Backup Monitor
+Name=Mirror Backup for GNOME
 Comment=Monitor and manage rsync backups
 Exec=bash -c 'PYTHONPATH="$EXT_DIR/app:\${PYTHONPATH:-}" exec python3 -m backup_monitor.main'
 Icon=drive-harddisk-symbolic

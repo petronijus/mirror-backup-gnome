@@ -1,4 +1,6 @@
-# Backup Monitor
+# Mirror Backup for GNOME
+
+> Scheduled rsync mirroring, watched live from your GNOME panel.
 
 Rsync-based backup for Linux with systemd scheduling, a GNOME Shell panel indicator, and a GTK4/libadwaita desktop app — set up jobs once, watch them in the corner of your eye.
 
@@ -81,7 +83,7 @@ The GTK4/libadwaita desktop app provides full backup management:
 - Progress bar with speed and ETA
 - Live countdown to next run per job
 - Pulsing icon when backups are active
-- "Open Backup Monitor" button to launch the desktop app
+- "Open Mirror Backup" button to launch the desktop app
 
 ## Backup Jobs
 
@@ -112,7 +114,7 @@ chmod +x install.sh
 ```
 
 Then restart GNOME Shell (log out/in on Wayland, or Alt+F2 → `r` on X11) and
-create your backup jobs in the desktop app (panel menu → Open Backup Monitor).
+create your backup jobs in the desktop app (panel menu → Open Mirror Backup).
 
 ## Uninstall
 
@@ -186,7 +188,7 @@ GitHub release:
   `gnome-extensions install --force <zip>` (no root needed; log out/in to
   activate). Includes the panel indicator, the bundled GTK4 app and the
   `backup-sync` script.
-- `backup-monitor-vX.Y.Z.tar.gz` — source tarball for `./install.sh` installs.
+- `mirror-backup-gnome-vX.Y.Z.tar.gz` — source tarball for `./install.sh` installs.
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 
