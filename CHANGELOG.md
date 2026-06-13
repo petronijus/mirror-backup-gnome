@@ -5,6 +5,8 @@ All notable changes to Mirror Backup for GNOME. Format follows
 [SemVer](https://semver.org/) (0.x = no stability promises).
 
 ## [Unreleased]
+
+## [0.5.1] - 2026-06-13
 ### Changed
 - Renamed to **Mirror Backup for GNOME** (was "Backup Monitor") with the tagline
   "Scheduled rsync mirroring, watched live from your GNOME panel". Display names,

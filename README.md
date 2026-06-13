@@ -4,6 +4,13 @@
 
 Rsync-based backup for Linux with systemd scheduling, a GNOME Shell panel indicator, and a GTK4/libadwaita desktop app — set up jobs once, watch them in the corner of your eye.
 
+## Screenshots
+
+<!-- Capture on a GNOME session: gnome-screenshot -w (window) into docs/screenshots/ -->
+| Dashboard | Job editor | Panel indicator |
+|---|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Job editor](docs/screenshots/job-editor.png) | ![Panel indicator](docs/screenshots/panel.png) |
+
 ## Components
 
 ```
