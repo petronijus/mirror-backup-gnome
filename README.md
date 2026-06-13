@@ -6,10 +6,14 @@ Rsync-based backup for Linux with systemd scheduling, a GNOME Shell panel indica
 
 ## Screenshots
 
-<!-- Capture on a GNOME session: gnome-screenshot -w (window) into docs/screenshots/ -->
+*Coming soon.*
+
+<!-- Add PNGs to docs/screenshots/ (see that folder's README for capture commands),
+     then uncomment the gallery below:
 | Dashboard | Job editor | Panel indicator |
 |---|---|---|
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Job editor](docs/screenshots/job-editor.png) | ![Panel indicator](docs/screenshots/panel.png) |
+-->
 
 ## Components
 
