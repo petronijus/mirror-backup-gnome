@@ -6,21 +6,19 @@ EXT_UUID="backup-monitor@petronijus"
 
 echo "=== Mirror Backup for GNOME Uninstaller ==="
 
-# 1. Stop and disable timers
+# 1. Stop and disable all backup timers/services (whatever jobs exist)
 echo "Stopping backup timers..."
-for timer in backup-secondary.timer backup-fun.timer backup-music.timer backup-photos.timer; do
-    systemctl --user disable --now "$timer" 2>/dev/null || true
+shopt -s nullglob
+for unit in "$HOME/.config/systemd/user"/backup-*.timer "$HOME/.config/systemd/user"/backup-*.service; do
+    name="$(basename "$unit")"
+    systemctl --user disable --now "$name" 2>/dev/null || true
+    systemctl --user stop "$name" 2>/dev/null || true
 done
 
-# 2. Stop any running services
-for svc in backup-secondary.service backup-fun.service backup-music.service backup-photos.service; do
-    systemctl --user stop "$svc" 2>/dev/null || true
-done
-
-# 3. Remove systemd units
+# 2. Remove systemd units
 echo "Removing systemd units..."
-rm -f "$HOME/.config/systemd/user"/backup-{secondary,fun,music,photos}.{service,timer}
-rm -rf "$HOME/.config/systemd/user"/backup-{secondary,fun,music,photos}.timer.d
+rm -f "$HOME/.config/systemd/user"/backup-*.service "$HOME/.config/systemd/user"/backup-*.timer
+rm -rf "$HOME/.config/systemd/user"/backup-*.timer.d
 systemctl --user daemon-reload
 
 # 4. Remove GNOME extension

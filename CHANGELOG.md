@@ -5,6 +5,12 @@ All notable changes to Mirror Backup for GNOME. Format follows
 [SemVer](https://semver.org/) (0.x = no stability promises).
 
 ## [Unreleased]
+### Fixed
+- Panel extension no longer ships a hardcoded list of job names — it now reads
+  the user's actual jobs from `~/.config/backup-sync/jobs.json` (same source as
+  the desktop app), so the panel reflects real jobs instead of a fixed set.
+- `uninstall.sh` removes whatever `backup-*` units exist instead of a fixed list.
+- Removed leftover personal job-name examples from README/comments.
 
 ## [0.5.1] - 2026-06-13
 ### Changed

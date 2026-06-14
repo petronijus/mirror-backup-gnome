@@ -98,7 +98,7 @@ class BackupJob:
             return jobs
 
         for service_file in sorted(SYSTEMD_USER_DIR.glob('backup-*.service')):
-            job_id = service_file.stem  # e.g. 'backup-secondary'
+            job_id = service_file.stem  # e.g. 'backup-documents'
             content = service_file.read_text()
 
             # Parse ExecStart line to extract args

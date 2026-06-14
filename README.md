@@ -104,9 +104,9 @@ generated from it). A typical setup looks like:
 
 | Job | Source | Destination | Schedule | Archive |
 |-----|--------|-------------|----------|---------|
-| `backup-data` | `/mnt/DATA/` | `/mnt/BACKUP/DATA/` | Every 2 days | 60 days |
-| `backup-music` | `/mnt/DATA/music/` | `/mnt/FAST/Music/` | Every 6 hours | None |
-| `backup-photos` | `/mnt/FAST/Photos/` | `/mnt/DATA/Photos/` | Every 4 days | None |
+| `backup-documents` | `/mnt/data/Documents/` | `/mnt/backup/Documents/` | Every 2 days | 60 days |
+| `backup-photos` | `/mnt/data/Pictures/` | `/mnt/backup/Photos/` | Daily | None |
+| `backup-projects` | `/mnt/data/Projects/` | `/mnt/fast/Projects/` | Every 6 hours | None |
 
 ## Install
 
@@ -138,20 +138,20 @@ chmod +x uninstall.sh
 
 ```bash
 # Run a backup now
-systemctl --user start backup-secondary
+systemctl --user start backup-documents
 
 # Stop a running backup
-systemctl --user stop backup-secondary
+systemctl --user stop backup-documents
 
 # Pause / resume
-systemctl --user kill --signal=USR1 backup-secondary   # pause
-systemctl --user kill --signal=USR2 backup-secondary   # resume
+systemctl --user kill --signal=USR1 backup-documents   # pause
+systemctl --user kill --signal=USR2 backup-documents   # resume
 
 # Check timer schedule
 systemctl --user list-timers 'backup-*'
 
 # View backup logs
-cat ~/.local/share/backup-sync/logs/backup-secondary.log
+cat ~/.local/share/backup-sync/logs/backup-documents.log
 ```
 
 ## Error Handling

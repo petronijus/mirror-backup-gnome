@@ -8,12 +8,24 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const JOBS = [
-    {id: 'backup-secondary', label: 'Secondary', service: 'backup-secondary.service'},
-    {id: 'backup-fun',       label: 'Fun',       service: 'backup-fun.service'},
-    {id: 'backup-music',     label: 'Music',     service: 'backup-music.service'},
-    {id: 'backup-photos',    label: 'Photos',    service: 'backup-photos.service'},
-];
+const JOBS_FILE = GLib.build_filenamev([
+    GLib.get_home_dir(), '.config', 'backup-sync', 'jobs.json',
+]);
+
+// Read the user's jobs from jobs.json (the same source the desktop app uses)
+// so the panel reflects their actual backup jobs rather than a fixed list.
+function _loadJobs() {
+    try {
+        const [ok, contents] = GLib.file_get_contents(JOBS_FILE);
+        if (!ok) return [];
+        const data = JSON.parse(new TextDecoder().decode(contents));
+        return (data.jobs ?? [])
+            .filter(j => j && j.id)
+            .map(j => ({id: j.id, label: j.name ?? j.id, service: `${j.id}.service`}));
+    } catch (_e) {
+        return [];
+    }
+}
 
 const STATUS_DIR = GLib.build_filenamev([
     GLib.get_home_dir(), '.local', 'share', 'backup-sync', 'status',
@@ -417,7 +429,7 @@ export default class BackupMonitorExtension extends Extension {
         this._indicator.menu.box.add_style_class_name('bm-menu');
 
         this._jobSections = [];
-        for (const job of JOBS) {
+        for (const job of _loadJobs()) {
             const section = new BackupJobSection(job, this._indicator.menu);
             this._jobSections.push(section);
         }
