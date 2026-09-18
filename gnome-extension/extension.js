@@ -412,6 +412,27 @@ class BackupJobSection {
     destroy() {}
 }
 
+/* ------------------------------------------------------------- panel position */
+
+// Follow the panel box chosen for tray icons in Ubuntu AppIndicators, so this
+// indicator sits with them instead of being stranded on the right when the tray
+// is moved to the centre. The schema belongs to that extension and is absent on
+// machines without it, hence the lookup and the fallback.
+const TRAY_POS_SCHEMA = 'org.gnome.shell.extensions.appindicator';
+const TRAY_POS_KEY = 'tray-pos';
+const PANEL_BOXES = ['left', 'center', 'right'];
+const DEFAULT_PANEL_BOX = 'right';
+
+function getTrayPosSettings() {
+    const schema = Gio.SettingsSchemaSource.get_default()?.lookup(TRAY_POS_SCHEMA, true);
+    return schema ? new Gio.Settings({settings_schema: schema}) : null;
+}
+
+function trayPanelBox(settings) {
+    const pos = settings?.get_string(TRAY_POS_KEY);
+    return PANEL_BOXES.includes(pos) ? pos : DEFAULT_PANEL_BOX;
+}
+
 export default class BackupMonitorExtension extends Extension {
     enable() {
         // First-run setup: install backup-sync script and create directories
@@ -453,7 +474,8 @@ export default class BackupMonitorExtension extends Extension {
         });
         this._indicator.menu.addMenuItem(openAppItem);
 
-        Main.panel.addToStatusArea('backup-monitor', this._indicator);
+        this._watchTrayPos();
+        this._placeIndicator();
 
         this._indicator.menu.connect('open-state-changed', (_menu, open) => {
             if (open) this._refresh();
@@ -530,6 +552,7 @@ export default class BackupMonitorExtension extends Extension {
     }
 
     disable() {
+        this._unwatchTrayPos();
         this._stopPulse();
         if (this._pollId) {
             GLib.source_remove(this._pollId);
@@ -629,5 +652,30 @@ export default class BackupMonitorExtension extends Extension {
             this._panelIcon.remove_all_transitions();
             this._panelIcon.opacity = 255;
         }
+    }
+    _placeIndicator() {
+        if (!this._indicator)
+            return;
+
+        // Re-adding the very same indicator is how ubuntu-appindicators moves its
+        // own icons between boxes; the role has to be cleared first, or
+        // addToStatusArea refuses it as a conflict.
+        Main.panel.statusArea['backup-monitor'] = null;
+        Main.panel.addToStatusArea('backup-monitor', this._indicator, 0,
+            trayPanelBox(this._trayPosSettings));
+    }
+
+    _watchTrayPos() {
+        this._trayPosSettings = getTrayPosSettings();
+        this._trayPosChangedId = this._trayPosSettings?.connect(
+            `changed::${TRAY_POS_KEY}`, () => this._placeIndicator());
+    }
+
+    _unwatchTrayPos() {
+        if (this._trayPosChangedId) {
+            this._trayPosSettings.disconnect(this._trayPosChangedId);
+            this._trayPosChangedId = null;
+        }
+        this._trayPosSettings = null;
     }
 }
